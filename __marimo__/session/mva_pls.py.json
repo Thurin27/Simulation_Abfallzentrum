@@ -1,0 +1,204 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.23.9",
+    "script_metadata_hash": "fb49d3f2db90089eaccdf6189d3cf6af"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "a9d43d6ece555a5d4445d2011ca34e26",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "2940fdb8f2c003d036932b80c17b1689",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<style>\n:root {\n    --bg:#1a1a2e; --panel:#16213e; --border:#0f3460;\n    --accent:#e94560; --ok:#00b894; --warn:#fdcb6e;\n    --danger:#e17055; --txt:#dfe6e9; --val:#74b9ff;\n}\n.pls { background:var(--bg); color:var(--txt); padding:12px; border-radius:8px; font-family:'Consolas','Courier New',monospace; }\n.pls-hdr { background:linear-gradient(90deg,var(--panel),var(--border)); padding:10px 20px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border:1px solid var(--border); flex-wrap:wrap; gap:8px; }\n.pls-hdr h2 { margin:0; color:#74b9ff; font-size:1.3em; }\n.pls-st { display:flex; gap:15px; align-items:center; font-size:0.85em; flex-wrap:wrap; }\n.pls-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:4px; animation:pulse 2s infinite; }\n@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }\n.pls-c { background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:12px; margin-bottom:10px; }\n.pls-c h3 { margin:0 0 8px 0; color:#74b9ff; font-size:1em; border-bottom:1px solid var(--border); padding-bottom:6px; }\n.pls-c h4 { margin:8px 0 4px 0; color:#9fb3c8; font-size:0.9em; }\n.c-v { color:var(--val); } .c-ok { color:var(--ok); } .c-w { color:var(--warn); } .c-d { color:var(--danger); }\n.pls-g2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }\n.pls-g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }\n.pls-bar { height:16px; border-radius:3px; background:#2d3436; overflow:hidden; margin:4px 0; }\n.pls-bar-f { height:100%; border-radius:3px; transition:width 0.5s; }\n.pls-sep { border-top:1px solid var(--border); margin:8px 0; padding-top:8px; }\n.pls-emi { border-collapse:separate; border-spacing:0; font-size:0.9em; width:100%; }\n.pls-emi th { text-align:left; padding:7px 14px; color:#74b9ff; border-bottom:2px solid #0f3460; background:#0f1a30; white-space:nowrap; }\n.pls-emi td { padding:6px 14px; border-bottom:1px solid #0f3460; white-space:nowrap; }\n.pls-emi tr:hover { background:#1e2d4d; }\n.pls-note { color:#8497ab; font-size:0.78em; line-height:1.5; margin-top:6px; }\n</style>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "5944392fbf53a46518187fccfad4b74a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "57e494f6f7a7d0be5ac03b954768307b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "9f5abedbe383b0571026a54cb1d9c0d4",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "feec3b6417b6322f91c34c7b3dd62a22",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "db98bed11a8684b175df3b805bfa48c3",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "11c44c55fc3b79b4c203ae692a4c88ba",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "823675b52e19599beace40a957b0001c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "ea06da5f488bc037a113f16f101ff5f1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "68368ae901baf0794b594e12f4aadd78",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "981ec21b40a69ba557f72123b815602b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "3a6bf6e734b9e5dacca776f61e5b3672",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "f5ebfee1df465b91feb9d9733a96fbee",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "d8312540ad4a27cbc8a3ef700332f369",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><div class=\"pls\"><div class=\"pls-hdr\">\n    <h2>\ud83d\udd25 M\u00fcllverbrennungsanlage \u2013 Prozessleitsystem</h2>\n    <div class=\"pls-st\">\n        <span><span class=\"pls-dot\" style=\"background:#00b894\"></span> EINHALTUNG</span>\n        <span>Feuerraum: 1000 \u00b0C</span>\n        <span>O\u2082: 8.6 %</span>\n        <span>P_el: 11.6 MW</span>\n    </div>\n</div></div><marimo-ui-element object-id='iLit-7' random-id='36d21c5d-95bc-929a-198f-2ece6a6a9b7d'><marimo-tabs data-initial-value='&quot;&quot;' data-label='null' data-tabs='[&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e\ud83d\udcca \u00dcbersicht&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;,&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e\ud83d\uddd1 M\u00fcllbunker&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;,&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e\ud83d\udd25 Feuerung &amp;amp; Kessel&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;,&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e\ud83c\udf2b Rauchgasreinigung&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;,&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e\ud83d\udccb Emissionen (17. BImSchV)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;,&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e\u2696\ufe0f Verfahrensvergleich&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;,&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e\u26a1 Turbine (KWK)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;]' data-orientation='&quot;horizontal&quot;'><div data-kind='tab'><marimo-ui-element object-id='iLit-0' random-id='f0f9c372-deb5-56a5-236b-4d5dff64251f'><marimo-lazy data-initial-value='false' data-label='null' data-show-loading-indicator='false'></marimo-lazy></marimo-ui-element></div><div data-kind='tab'><marimo-ui-element object-id='iLit-1' random-id='aff4e5e2-b625-07a5-faa3-02da994ef032'><marimo-lazy data-initial-value='false' data-label='null' data-show-loading-indicator='false'></marimo-lazy></marimo-ui-element></div><div data-kind='tab'><marimo-ui-element object-id='iLit-2' random-id='a4de93f1-385f-2843-cbcc-90800bbfd269'><marimo-lazy data-initial-value='false' data-label='null' data-show-loading-indicator='false'></marimo-lazy></marimo-ui-element></div><div data-kind='tab'><marimo-ui-element object-id='iLit-3' random-id='b6ff0c15-14a7-866a-be99-69adf8adb831'><marimo-lazy data-initial-value='false' data-label='null' data-show-loading-indicator='false'></marimo-lazy></marimo-ui-element></div><div data-kind='tab'><marimo-ui-element object-id='iLit-4' random-id='179b175c-caaa-4479-c722-f599d9288022'><marimo-lazy data-initial-value='false' data-label='null' data-show-loading-indicator='false'></marimo-lazy></marimo-ui-element></div><div data-kind='tab'><marimo-ui-element object-id='iLit-5' random-id='405561be-dbd4-1da3-32c9-1554ea767dec'><marimo-lazy data-initial-value='false' data-label='null' data-show-loading-indicator='false'></marimo-lazy></marimo-ui-element></div><div data-kind='tab'><marimo-ui-element object-id='iLit-6' random-id='e55d73f8-70d0-8c8e-f492-71c2fa66b65f'><marimo-lazy data-initial-value='false' data-label='null' data-show-loading-indicator='false'></marimo-lazy></marimo-ui-element></div></marimo-tabs></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}
