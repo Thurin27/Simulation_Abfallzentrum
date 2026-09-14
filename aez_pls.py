@@ -25,7 +25,7 @@ def _():
     # Deploy-URL der MVA-Spoke-App (mva_pls). Nach dem Deployment hier die
     # echte GitHub-Pages-URL eintragen – der Link im Lageplan und im MVA-Tab
     # zeigt dann direkt auf die Simulation.
-    MVA_URL = "https://thurin27.github.io/mva_pls/"
+    MVA_URL = "https://thurin27.github.io/Simulation_Abfallzentrum/mva/"
     return (MVA_URL,)
 
 
