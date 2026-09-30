@@ -296,8 +296,11 @@ def _(MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo, muell_t,
         if wh is not None and x > wh: return "c-w"
         return "c-v"
 
-    def vr(label, val, unit, **kw):
-        cls = vc(val, **kw) if kw else "c-v"
+    def vr(label, val, unit, cls=None, **kw):
+        # cls: entweder direkt als CSS-Klasse (4. Positionsargument) oder via
+        # Schwellen-Keywords (wl/dl/wh/dh) automatisch über vc() bestimmt.
+        if cls is None:
+            cls = vc(val, **kw) if kw else "c-v"
         return (f'<tr><td style="padding:3px 8px 3px 0;color:#b2bec3;white-space:nowrap">{label}</td>'
                 f'<td style="padding:3px 0 3px 8px;white-space:nowrap;font-weight:bold" class="{cls}">{val}&ensp;{unit}</td></tr>')
 
@@ -463,10 +466,10 @@ def _(MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo, muell_t,
       {box(930, 520, 150, 110, "#e94560", "Deponie (DK II)", "41 ha", f"Schlacke {m_schlacke:.0f} t/d", f"Sickerw. {V_sicker:.0f} m³/d")}
 
       <!-- Ströme: Anlieferung → Annahme (Verteiler-Manifold) -->
-      {flow([(150, 322), (178, 322), (178, 75), (210, 75)], "in", "Hausmüll", lx=197, ly=69)}
-      {flow([(150, 345), (186, 345), (186, 265), (210, 265)], "in", "Sperrmüll", lx=197, ly=259)}
-      {flow([(150, 388), (186, 388), (186, 455), (210, 455)], "in", "Bioabfall", lx=197, ly=449)}
-      {flow([(150, 402), (194, 402), (194, 595), (210, 595)], "ks", "Klärschl.", lx=200, ly=589)}
+      {flow([(150, 322), (178, 322), (178, 75), (210, 75)], "in", "Hausmüll", lx=179, ly=69)}
+      {flow([(150, 345), (186, 345), (186, 265), (210, 265)], "in", "Sperrmüll", lx=179, ly=259)}
+      {flow([(150, 388), (170, 388), (170, 455), (210, 455)], "in", "Bioabfall", lx=184, ly=449)}
+      {flow([(150, 402), (162, 402), (162, 595), (210, 595)], "ks", "Klärschl.", lx=184, ly=589)}
 
       <!-- Annahme → Prozess -->
       {flow([(360, 75), (440, 75)], "in")}
@@ -672,32 +675,20 @@ def _(MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo, muell_t,
 
     # Kontext-Karte (Lernsituation)
     _ctx = mo.Html('''<div class="pls"><div class="pls-c">
-        <h3>🔀 LS 6.1 – Konzeption einer Wertstoffsortieranlage (RecyTech GmbH)</h3>
+        <h3>🔀 Wertstoffsortieranlage</h3>
         <div class="pls-soon">
-          Herr Bahr möchte ein neues Geschäftsfeld erschließen: Material aus der Wertstofftonne sortieren
-          und die gewonnenen Sekundärrohstoffe verkaufen. Diese Simulation unterstützt die Konzeptphase –
-          Verfahrensauswahl, Verfahrensfließbild, Grundriss und Wirtschaftlichkeit.
-          <div class="pls-sep"></div>
           <b>Rahmenbedingungen:</b> Fraktionen Kunststoffe (PET, PE, PP), Metalle (Fe, Al), Papier/Karton ·
           Durchsatz ca. 5 t/h · Halle 40 m × 20 m = 800 m², 8 m Höhe · 400 V, Druckluft, Kran 5 t.
-          <br><b>Aufgabe:</b> Sortierverfahren auswählen und begründen · Verfahrensfließbild · maßstäblichen
-          Grundriss (1:100) · Wirtschaftlichkeitsbetrachtung.
           <div class="pls-sep"></div>
-          <span style="color:#8497ab;font-size:0.9em">Die neun Positionen sind <b>frei belegbar</b> (leere Positionen
-          = Stufe entfällt). Vorbelegt ist eine funktionierende <b>Grundlinie</b> (Sieb → Wind → Magnet → Wirbelstrom
-          → NIR). Sie arbeitet, hat aber zwei Schwächen: Der Windsichter trennt nach Gewicht und bekommt <b>Folie nicht
-          sauber vom Papier</b> – die Folie verschmutzt die PPK-Fraktion; zudem stört Rest-Folie die NIR-Kunststoff­sortierung,
-          und <b>Getränkekartons (FKN)</b> landen im Sortierrest. Über die freien Positionen stehen drei <b>Optimierungsstufen</b>
-          bereit: <b>Folienabscheider</b> (Folienabsaugung/NIR-Folie – zieht die Folie gezielt heraus), <b>NIR-FKN</b>
-          (Getränkekartons) und <b>NIR-Nachsortierung</b> (höhere Kunststoffausbeute). Ziel: die Grundlinie durch Auswahl
-          <b>und richtige Platzierung</b> wirtschaftlich verbessern. Orientierung (UBA / Grumnt 2022): In der LVP-Sortierung
-          wird die Folie <b>früh</b> ausgeschleust – prüft selbst, warum der Folienabscheider <b>vor</b> Windsichter und
-          NIR den größten Nutzen bringt und wo die anderen Stufen am besten stehen.</span>
+          <span style="color:#8497ab;font-size:0.9em">Die neun Positionen sind <b>frei belegbar</b>
+          (leere Positionen = Stufe entfällt).</span>
         </div>
     </div></div>''')
 
-    # Massenbilanz-Tabelle
-    _tdst = "padding:6px 12px;border-bottom:1px solid #0f3460;font-family:monospace;white-space:nowrap"
+    # Massenbilanz-Tabelle (dunkler Zellhintergrund, damit Marimo die Tabelle
+    # nicht hell einfärbt → hellgraue Schrift bliebe sonst auf Weiß unlesbar)
+    _tdst = "padding:6px 12px;border-bottom:1px solid #0f3460;font-family:monospace;white-space:nowrap;background:#16213e"
+    _thst = "padding:6px 12px;border-bottom:2px solid #0f3460;font-family:monospace;white-space:nowrap;background:#0f1a30;color:#74b9ff"
     _rows = ""
     for _e in _sr["ergebnis"]:
         _isp = _e["reinheit"] is not None
@@ -716,12 +707,12 @@ def _(MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo, muell_t,
                   f'</tr>')
     _bilanz = (f'<table style="border-collapse:collapse;font-size:0.85em;width:100%">'
                f'<tr>'
-               f'<th style="{_tdst};color:#74b9ff;text-align:left;border-bottom:2px solid #0f3460">Fraktion</th>'
-               f'<th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">t/h</th>'
-               f'<th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">t/a</th>'
-               f'<th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">Reinheit</th>'
-               f'<th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">€/t</th>'
-               f'<th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">k€/a</th>'
+               f'<th style="{_thst};text-align:left">Fraktion</th>'
+               f'<th style="{_thst};text-align:right">t/h</th>'
+               f'<th style="{_thst};text-align:right">t/a</th>'
+               f'<th style="{_thst};text-align:right">Reinheit</th>'
+               f'<th style="{_thst};text-align:right">€/t</th>'
+               f'<th style="{_thst};text-align:right">k€/a</th>'
                f'</tr>{_rows}</table>')
 
     # Wirtschaftlichkeit
@@ -771,9 +762,9 @@ def _(MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo, muell_t,
               + vr("Flächenbelegung", f"{_sr['foot_sum']/800*100:.0f}", "%", _footc)
           )}</div>
           <div><table style="border-collapse:collapse;font-size:0.82em;width:100%">
-            <tr><th style="{_tdst};color:#74b9ff;text-align:left;border-bottom:2px solid #0f3460">Aggregat</th>
-            <th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">L × B [m]</th>
-            <th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">m²</th></tr>
+            <tr><th style="{_thst};text-align:left">Aggregat</th>
+            <th style="{_thst};text-align:right">L × B [m]</th>
+            <th style="{_thst};text-align:right">m²</th></tr>
             {_foot_rows}</table></div>
         </div>
         <p style="color:#8497ab;font-size:0.8em;margin-top:6px">Die Maschinen sind bewusst <b>nicht</b> platziert – Anordnung, Materialfluss, Wartungsabstände und Verkehrswege plant die Teilgruppe selbst (Aufgabe 3). Stellflächen sind Richtwerte.</p>
