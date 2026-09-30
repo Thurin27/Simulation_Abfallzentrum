@@ -25,7 +25,7 @@ def _():
     # Deploy-URL der MVA-Spoke-App (mva_pls). Nach dem Deployment hier die
     # echte GitHub-Pages-URL eintragen – der Link im Lageplan und im MVA-Tab
     # zeigt dann direkt auf die Simulation.
-    MVA_URL = "https://thurin27.github.io/Simulation_Abfallzentrum/mva/"
+    MVA_URL = "https://thurin27.github.io/mva_pls/"
     return (MVA_URL,)
 
 
@@ -84,7 +84,195 @@ def _(mo):
 
 
 @app.cell
-def _(MVA_URL, bio_t, heizwert, ks_t, mo, muell_t, niederschlag, sortier_t):
+def _():
+    # =========================================================================
+    #  LS 6.1 – Wertstoffsortieranlage (RecyTech GmbH)
+    #  Transparentes Massenbilanz- und Wirtschaftlichkeitsmodell einer
+    #  mechanischen Aufbereitung. Die Reihenfolge der Aggregate ist FREI
+    #  wählbar – die Stufen werden in der gewählten Folge auf den Stoffstrom
+    #  angewandt. Reihenfolge und Auswahl wirken direkt auf Ausbeute, Reinheit
+    #  und Wirtschaftlichkeit (keine starr vorgegebene Musterlösung).
+    # =========================================================================
+    S_MATS = ["PET", "PE", "PP", "Folie", "FKN", "Fe", "Al", "PPK", "Rest"]
+    S_PRESETS = {
+        "Gemischte Wertstofftonne": dict(PET=10, PE=10, PP=8, Folie=10, FKN=5, Fe=8, Al=3, PPK=20, Rest=26),
+        "Kunststoffreich (LVP)":    dict(PET=15, PE=14, PP=12, Folie=14, FKN=6, Fe=5, Al=4, PPK=10, Rest=20),
+        "Papier-/Kartonreich":      dict(PET=7, PE=7, PP=5, Folie=6, FKN=4, Fe=6, Al=2, PPK=40, Rest=23),
+    }
+    # Preise Sekundärrohstoffe (€/t) und Ziel-Material je Produkt.
+    # Folie ist KEIN Produkt (Störstoff) → kein Preis, kein Ziel-Eintrag.
+    S_PREIS = dict(PET=260, PE=190, PP=190, FKN=120, Fe=140, Al=950, PPK=85)
+    S_ZIEL = {"Fe-Metalle": "Fe", "Al / NE-Metalle": "Al", "PPK (Papier/Karton)": "PPK",
+              "Getränkekartons (FKN)": "FKN", "PET": "PET", "PE": "PE", "PP": "PP"}
+    # Aggregate-Metadaten. base=Standardlinie, opt=Optimierungsstufe.
+    # fb = Fließbild-Label (| = Zeilenumbruch)
+    S_STAGES = {
+        "sieb":   dict(label="Siebanlage",            fb="Siebanlage",              sub="Klassierung",     col="#fdcb6e", invest=200000, kw=15, foot=(8, 3), rolle="base"),
+        "folie":  dict(label="Folienabscheider",      fb="Folien-|abscheider",      sub="Folie raus",      col="#00cec9", invest=180000, kw=15, foot=(4, 3), rolle="opt"),
+        "wind":   dict(label="Windsichter",           fb="Windsichter",             sub="Papier/Leicht",   col="#00b894", invest=120000, kw=25, foot=(4, 3), rolle="base"),
+        "magnet": dict(label="Magnetabscheider",      fb="Magnetab-|scheider",      sub="Fe",              col="#e17055", invest=60000,  kw=8,  foot=(2, 2), rolle="base"),
+        "eddy":   dict(label="Wirbelstromabscheider", fb="Wirbelstrom-|abscheider", sub="Al / NE",         col="#e84393", invest=150000, kw=20, foot=(3, 2), rolle="base"),
+        "nirfkn": dict(label="NIR-FKN (Kartons)",     fb="NIR-FKN",                 sub="Getränkekartons", col="#e0a458", invest=350000, kw=20, foot=(5, 3), rolle="opt"),
+        "nir":    dict(label="NIR-Sortierung",        fb="NIR-|Sortierung",         sub="PET · PE · PP",   col="#a29bfe", invest=600000, kw=30, foot=(6, 3), rolle="base"),
+        "nir2":   dict(label="NIR-Nachsortierung",    fb="NIR-Nach-|sortierung",    sub="Ausbeute ↑",      col="#6c8cff", invest=500000, kw=25, foot=(6, 3), rolle="opt"),
+    }
+    S_ORDER = ["sieb", "folie", "wind", "magnet", "eddy", "nirfkn", "nir", "nir2"]
+
+    def sortiermodell(durchsatz, comp, sequence, betriebsstd,
+                      strompreis=0.20, personal_fte=3, lohn_fte=60000, overhead_a=120000):
+        ENTSORG = dict(sortierrest=-55.0, siebrest=-70.0, folien=0.0)   # Folie: kostenneutrale Verwertung
+        MATS = S_MATS
+
+        seq, seen = [], set()
+        for k in sequence:
+            if k in S_STAGES and k not in seen:
+                seq.append(k)
+                seen.add(k)
+
+        s = sum(comp.values()) or 1.0
+        main = {m: durchsatz * comp[m] / s for m in MATS}
+        produkte, reste = {}, {}
+        stage_out = []   # je angewandter Stufe: (key, [(name, masse, reinheit|None, kind), ...])
+
+        def pull(eta):
+            prod = {}
+            for m in MATS:
+                moved = main[m] * eta.get(m, 0.0)
+                prod[m] = moved
+                main[m] -= moved
+            return prod
+
+        def merge(store, name, prod):
+            if name in store:
+                for m in MATS:
+                    store[name][m] += prod[m]
+            else:
+                store[name] = dict(prod)
+
+        def emit(name, prod, kind):
+            merge(produkte if kind == "prod" else reste, name, prod)
+            masse = sum(prod.values())
+            reinheit = None if kind == "rest" else ((prod[S_ZIEL[name]] / masse) if masse > 1e-9 else 0.0)
+            return (name, masse, reinheit, kind)
+
+        def apply_stage(key):
+            o = []
+            if key == "sieb":
+                o.append(emit("Siebrest (Feinfraktion)", pull({m: (0.55 if m == "Rest" else 0.03) for m in MATS}), "rest"))
+            elif key == "folie":
+                # Dedizierte Folienabscheidung (Folienabsaugung / NIR-Folie): zieht Folie früh raus,
+                # bevor sie Papier (Windsichter) und Kunststoffe (NIR) verschmutzt.
+                eta = {m: {"Folie": 0.90, "PPK": 0.02, "Rest": 0.02}.get(m, 0.005) for m in MATS}
+                o.append(emit("Folien (→ Verwertung)", pull(eta), "rest"))
+            elif key == "wind":
+                # Windsichtung: Leichtgut = Papier + Folie (+ leichter Rest). Air-Klassierung kann
+                # Folie nicht sauber vom Papier trennen → Rest-Folie verschmutzt die PPK-Fraktion.
+                eta = {m: {"PPK": 0.80, "Folie": 0.50, "Rest": 0.12}.get(m, 0.01) for m in MATS}
+                o.append(emit("PPK (Papier/Karton)", pull(eta), "prod"))
+            elif key == "magnet":
+                o.append(emit("Fe-Metalle", pull({m: (0.95 if m == "Fe" else 0.004) for m in MATS}), "prod"))
+            elif key == "eddy":
+                gesamt = sum(main.values()) + 1e-9
+                penalty = min(0.45, (main["Fe"] / gesamt) * 2.5)   # Rest-Fe stört Wirbelstrom
+                eta = {m: (0.85 * (1 - penalty) if m == "Al" else (0.20 if m == "Fe" else 0.01)) for m in MATS}
+                o.append(emit("Al / NE-Metalle", pull(eta), "prod"))
+            elif key == "nirfkn":
+                o.append(emit("Getränkekartons (FKN)", pull({m: (0.85 if m == "FKN" else 0.02) for m in MATS}), "prod"))
+            elif key == "nir":
+                # Fremdstoffe (v. a. Folie) senken NIR-Ausbeute UND -Reinheit → Reihenfolge zählt
+                gesamt = sum(main.values()) + 1e-9
+                dirt = sum(main[m] for m in MATS if m not in ("PET", "PE", "PP")) / gesamt
+                rec = 0.92 * (1 - 0.6 * dirt)
+                cc = dict(PET=0.02, PE=0.02, PP=0.02, Folie=0.05, FKN=0.03, Fe=0.05, Al=0.05, PPK=0.04, Rest=0.04)
+                for poly in ["PET", "PE", "PP"]:
+                    o.append(emit(poly, pull({m: (rec if m == poly else cc[m]) for m in MATS}), "prod"))
+            elif key == "nir2":
+                # Nachsortierung: gewinnt Rest-Polymer aus dem Strom (Ausbeute ↑)
+                for poly in ["PET", "PE", "PP"]:
+                    o.append(emit(poly, pull({m: (0.85 if m == poly else 0.015) for m in MATS}), "prod"))
+            return o
+
+        for k in seq:
+            stage_out.append((k, apply_stage(k)))
+        reste["Sortierrest (→ EBS/MVA)"] = dict(main)
+
+        ergebnis, erloes_a = [], 0.0
+        for name, prod in produkte.items():
+            masse = sum(prod.values())
+            reinheit = (prod[S_ZIEL[name]] / masse) if masse > 1e-9 else 0.0
+            basis = S_PREIS[S_ZIEL[name]]
+            eff = basis * max(0.0, min(1.0, (reinheit - 0.65) / 0.30))   # <65% wertlos, ab 95% voll
+            m_a = masse * betriebsstd
+            erl = m_a * eff
+            erloes_a += erl
+            ergebnis.append(dict(name=name, masse=masse, m_a=m_a, reinheit=reinheit,
+                                 basis=basis, eff_preis=eff, erloes=erl, kind="produkt"))
+        entsorg_a = 0.0
+        for name, prod in reste.items():
+            masse = sum(prod.values())
+            m_a = masse * betriebsstd
+            key = ("siebrest" if "Sieb" in name else ("folien" if "Folien" in name else "sortierrest"))
+            kost = m_a * ENTSORG[key]
+            entsorg_a += kost
+            ergebnis.append(dict(name=name, masse=masse, m_a=m_a, reinheit=None,
+                                 basis=ENTSORG[key], eff_preis=ENTSORG[key], erloes=kost, kind="rest"))
+
+        inv = 400000 + sum(S_STAGES[k]["invest"] for k in seq)
+        kw = 20 + sum(S_STAGES[k]["kw"] for k in seq)
+        energie_a = kw * betriebsstd * strompreis
+        personal_a = personal_fte * lohn_fte
+        wartung_a = inv * 0.04
+        betrieb_a = energie_a + personal_a + wartung_a + overhead_a
+        deckung_a = erloes_a + entsorg_a - betrieb_a
+        amort = inv / deckung_a if deckung_a > 0 else None
+
+        foot = [("Aufgabe / Dosierung", (6, 4))]
+        for k in seq:
+            foot.append((S_STAGES[k]["label"], S_STAGES[k]["foot"]))
+        foot.append(("Ballenpresse / Output", (5, 4)))
+        foot_sum = sum(L * B for _, (L, B) in foot)
+
+        return dict(seq=seq, ergebnis=ergebnis, stage_out=stage_out, erloes_a=erloes_a,
+                    entsorg_a=entsorg_a, energie_a=energie_a, personal_a=personal_a,
+                    wartung_a=wartung_a, overhead_a=overhead_a, betrieb_a=betrieb_a,
+                    deckung_a=deckung_a, amort=amort, inv=inv, kw=kw,
+                    t_a=durchsatz * betriebsstd, foot=foot, foot_sum=foot_sum)
+    return S_ORDER, S_PRESETS, S_STAGES, sortiermodell
+
+
+@app.cell
+def _(S_ORDER, S_PRESETS, S_STAGES, mo):
+    # === LS 6.1 – Bedienelemente Sortieranlage ===
+    # Aggregate über 9 Positionen FREI anordnen (Reihenfolge = Verfahrenskonzept).
+    s_preset = mo.ui.dropdown(options=list(S_PRESETS.keys()),
+                              value="Gemischte Wertstofftonne", label="Input-Zusammensetzung")
+    s_durchsatz = mo.ui.slider(start=1.0, stop=10.0, step=0.5, value=5.0,
+                               label="Durchsatz [t/h]", show_value=True)
+    s_stunden = mo.ui.dropdown(options={"Einschicht (2000 h/a)": 2000,
+                                        "Zweischicht (4000 h/a)": 4000,
+                                        "Dreischicht (6000 h/a)": 6000},
+                               value="Zweischicht (4000 h/a)", label="Betriebszeit")
+    _leer = "— (leer)"
+    _opts = [_leer] + [S_STAGES[k]["label"] for k in S_ORDER]
+    # Standard-Belegung = funktionierende 5er-Grundlinie (Optimierung über freie Positionen)
+    s_pos1 = mo.ui.dropdown(options=_opts, value="Siebanlage", label="Position 1")
+    s_pos2 = mo.ui.dropdown(options=_opts, value="Windsichter", label="Position 2")
+    s_pos3 = mo.ui.dropdown(options=_opts, value="Magnetabscheider", label="Position 3")
+    s_pos4 = mo.ui.dropdown(options=_opts, value="Wirbelstromabscheider", label="Position 4")
+    s_pos5 = mo.ui.dropdown(options=_opts, value="NIR-Sortierung", label="Position 5")
+    s_pos6 = mo.ui.dropdown(options=_opts, value=_leer, label="Position 6")
+    s_pos7 = mo.ui.dropdown(options=_opts, value=_leer, label="Position 7")
+    s_pos8 = mo.ui.dropdown(options=_opts, value=_leer, label="Position 8")
+    s_pos9 = mo.ui.dropdown(options=_opts, value=_leer, label="Position 9")
+    return (s_durchsatz, s_pos1, s_pos2, s_pos3, s_pos4, s_pos5, s_pos6,
+            s_pos7, s_pos8, s_pos9, s_preset, s_stunden)
+
+
+@app.cell
+def _(MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo, muell_t,
+      niederschlag, s_durchsatz, s_pos1, s_pos2, s_pos3, s_pos4, s_pos5,
+      s_pos6, s_pos7, s_pos8, s_pos9, s_preset, s_stunden, sortier_t,
+      sortiermodell):
     # =========================================================================
     #  AEZ-LEITSTAND – Aufbau
     #  -----------------------------------------------------------------------
@@ -181,7 +369,7 @@ def _(MVA_URL, bio_t, heizwert, ks_t, mo, muell_t, niederschlag, sortier_t):
 
     # ---------- Header ----------
     hdr = f'''<div class="pls"><div class="pls-hdr">
-        <h2>♻️ Abfallentsorgungszentrum Asdonkshof – Leitstand</h2>
+        <h2>♻️ Abfall- &amp; Energiezentrum Schwierbach – Leitstand</h2>
         <div class="pls-st">
             <span><span class="pls-dot" style="background:#00b894"></span> ONLINE</span>
             <span>Input: {m_input:.0f} t/d</span>
@@ -205,27 +393,50 @@ def _(MVA_URL, bio_t, heizwert, ks_t, mo, muell_t, niederschlag, sortier_t):
             return f'<a href="{href}" target="_blank" rel="noopener" style="cursor:pointer">{"".join(out)}</a>'
         return "".join(out)
 
-    def flow(x1, y1, x2, y2, label="", dash=False, col="#0984e3"):
-        d = ' stroke-dasharray="5,3"' if dash else ""
-        seg = (f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{col}" '
-               f'stroke-width="2.5" marker-end="url(#ah)"{d}/>')
-        if label:
-            mx, my = (x1 + x2) / 2, (y1 + y2) / 2 - 4
-            seg += f'<text x="{mx}" y="{my}" fill="#9fb3c8" text-anchor="middle" font-size="9" font-family="monospace">{label}</text>'
-        return seg
+    # Farbcodierte Pfeilspitzen (eine Marker-Definition je Strom-Farbe).
+    FLOWCOL = {
+        "in": "#5b9bd5", "dampf": "#e17055", "bio": "#00b894",
+        "schlacke": "#b2bec3", "wasser": "#74b9ff", "ks": "#a29bfe",
+    }
+    _mk = "".join(
+        f'<marker id="mk_{k}" markerWidth="11" markerHeight="9" refX="8.5" refY="4.5" '
+        f'orient="auto" markerUnits="userSpaceOnUse">'
+        f'<path d="M0,0 L9,4.5 L0,9 L2.4,4.5 Z" fill="{v}"/></marker>'
+        for k, v in FLOWCOL.items()
+    )
 
-    def flow_path(pts, label="", dash=False, col="#0984e3", lx=None, ly=None):
-        # orthogonale Leitungsführung über Stützpunkte (saubere Korridore)
-        d = ' stroke-dasharray="5,3"' if dash else ""
-        pstr = " ".join(f"{x},{y}" for x, y in pts)
-        seg = (f'<polyline points="{pstr}" fill="none" stroke="{col}" '
-               f'stroke-width="2.5" marker-end="url(#ah)"{d}/>')
+    def _round_path(pts, r=12):
+        # Orthogonaler Pfad mit abgerundeten Ecken (quadratische Bögen).
+        if len(pts) < 2:
+            return ""
+        d = [f'M {pts[0][0]},{pts[0][1]}']
+        for i in range(1, len(pts) - 1):
+            (x0, y0), (x1, y1), (x2, y2) = pts[i - 1], pts[i], pts[i + 1]
+            import math as _m
+            d1 = _m.hypot(x1 - x0, y1 - y0)
+            d2 = _m.hypot(x2 - x1, y2 - y1)
+            rr = min(r, d1 / 2, d2 / 2)
+            ax = x1 - (x1 - x0) / max(d1, 1e-6) * rr
+            ay = y1 - (y1 - y0) / max(d1, 1e-6) * rr
+            bx = x1 + (x2 - x1) / max(d2, 1e-6) * rr
+            by = y1 + (y2 - y1) / max(d2, 1e-6) * rr
+            d.append(f'L {ax:.1f},{ay:.1f} Q {x1},{y1} {bx:.1f},{by:.1f}')
+        d.append(f'L {pts[-1][0]},{pts[-1][1]}')
+        return " ".join(d)
+
+    def flow(pts, key="in", label="", lx=None, ly=None, dash=False):
+        # pts: Liste orthogonaler Stützpunkte (x,y). Farbe über key (FLOWCOL).
+        col = FLOWCOL.get(key, "#5b9bd5")
+        d = ' stroke-dasharray="6,4"' if dash else ""
+        seg = (f'<path d="{_round_path(pts)}" fill="none" stroke="{col}" stroke-width="2.4" '
+               f'stroke-linejoin="round" stroke-linecap="round" marker-end="url(#mk_{key})"{d}/>')
         if label and lx is not None:
-            seg += f'<text x="{lx}" y="{ly}" fill="#9fb3c8" text-anchor="middle" font-size="9" font-family="monospace">{label}</text>'
+            seg += (f'<text x="{lx}" y="{ly}" fill="#9fb3c8" text-anchor="middle" '
+                    f'font-size="9" font-family="monospace">{label}</text>')
         return seg
 
     schema = f'''<svg viewBox="0 0 1240 720" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;background:#0a1428;border-radius:6px">
-      <defs><marker id="ah" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#0984e3"/></marker></defs>
+      <defs>{_mk}</defs>
 
       <!-- Anlieferung -->
       {box(20, 300, 130, 110, "#74b9ff", "Anlieferung", "Waage", f"{m_input:.0f} t/d", "Eingangskontrolle")}
@@ -251,37 +462,36 @@ def _(MVA_URL, bio_t, heizwert, ks_t, mo, muell_t, niederschlag, sortier_t):
       {box(930, 210, 150, 70, "#74b9ff", "Strom / Fernwärme", f"{E_el_netto:.0f} MWh/d", "ins Netz")}
       {box(930, 520, 150, 110, "#e94560", "Deponie (DK II)", "41 ha", f"Schlacke {m_schlacke:.0f} t/d", f"Sickerw. {V_sicker:.0f} m³/d")}
 
-      <!-- Ströme: Anlieferung → Annahme -->
-      {flow(150, 330, 210, 90, "Hausmüll")}
-      {flow(150, 350, 210, 265, "Sperrmüll")}
-      {flow(150, 375, 210, 455, "Bioabfall")}
-      {flow(150, 400, 210, 595, "Klärschl.")}
+      <!-- Ströme: Anlieferung → Annahme (Verteiler-Manifold) -->
+      {flow([(150, 322), (178, 322), (178, 75), (210, 75)], "in", "Hausmüll", lx=197, ly=69)}
+      {flow([(150, 345), (186, 345), (186, 265), (210, 265)], "in", "Sperrmüll", lx=197, ly=259)}
+      {flow([(150, 388), (186, 388), (186, 455), (210, 455)], "in", "Bioabfall", lx=197, ly=449)}
+      {flow([(150, 402), (194, 402), (194, 595), (210, 595)], "ks", "Klärschl.", lx=200, ly=589)}
 
       <!-- Annahme → Prozess -->
-      {flow(360, 75, 440, 80, "")}
-      {flow(360, 255, 440, 105, "")}
-      <text x="378" y="248" fill="#9fb3c8" text-anchor="middle" font-size="9" font-family="monospace">Reststoff</text>
-      {flow_path([(360, 595), (405, 595), (405, 132), (440, 132)], "Mitverbr.", dash=True, lx=405, ly=350)}
-      {flow(360, 455, 440, 455, "")}
+      {flow([(360, 75), (440, 75)], "in")}
+      {flow([(360, 265), (398, 265), (398, 110), (440, 110)], "in", "Reststoff", lx=380, ly=256)}
+      {flow([(360, 595), (420, 595), (420, 132), (440, 132)], "ks", "Mitverbr.", lx=393, ly=586, dash=True)}
+      {flow([(360, 455), (440, 455)], "bio")}
 
       <!-- MVA → RGR → Kamin -->
-      {flow(610, 70, 690, 75, "Rohgas")}
-      {flow(850, 75, 930, 75, "")}
+      {flow([(610, 70), (690, 70)], "in", "Rohgas", lx=650, ly=62)}
+      {flow([(850, 75), (930, 75)], "in")}
 
       <!-- MVA → Energiezentrale (Dampf) -->
-      {flow(525, 140, 700, 200, "Dampf", col="#e17055")}
-      {flow(850, 245, 930, 245, "")}
+      {flow([(560, 140), (560, 245), (690, 245)], "dampf", "Dampf", lx=584, ly=200)}
+      {flow([(850, 245), (930, 245)], "dampf")}
 
       <!-- Vergärung → Energiezentrale (Biogas) + Kompost -->
-      {flow(610, 440, 690, 280, "Biogas", dash=True, col="#00b894")}
-      {flow(610, 470, 690, 445, "Gärrest")}
+      {flow([(610, 425), (638, 425), (638, 290), (690, 290)], "bio", "Biogas", lx=624, ly=340, dash=True)}
+      {flow([(610, 455), (690, 455)], "bio", "Gärrest", lx=650, ly=447)}
 
       <!-- MVA → Schlacke → Aufbereitung → Deponie -->
-      {flow_path([(610, 120), (650, 120), (650, 595), (690, 595)], "Schlacke", col="#b2bec3", lx=668, ly=545)}
-      {flow(850, 600, 930, 575, "")}
+      {flow([(610, 120), (655, 120), (655, 595), (690, 595)], "schlacke", "Schlacke", lx=672, ly=550)}
+      {flow([(850, 595), (890, 595), (890, 560), (930, 560)], "schlacke")}
 
       <!-- Deponie → Sickerwasser -->
-      {flow(1005, 630, 1005, 690, "Sickerwasser → Behandlung", dash=True, col="#74b9ff")}
+      {flow([(1005, 630), (1005, 690)], "wasser", "Sickerwasser → Behandlung", lx=1005, ly=705, dash=True)}
 
       <!-- Labor (zentrale Überwachung) -->
       <rect x="930" y="330" width="150" height="90" rx="6" fill="#16213e" stroke="#74b9ff" stroke-width="1.5" stroke-dasharray="3,3"/>
@@ -372,13 +582,216 @@ def _(MVA_URL, bio_t, heizwert, ks_t, mo, muell_t, niederschlag, sortier_t):
       </div>
     </div>''')
 
-    sortierung = geruest(
-        "🔀 Sortieranlage (Vorschaltanlage)",
-        "Massenbilanz-Simulation: Input-Tonnage und -Zusammensetzung → Abscheidegrade je Fraktion → "
-        "Output mit Ausbeute und Restverschmutzung. Reststoff wird der MVA zugeführt.",
-        ["Input (Mengen & Zusammensetzung)",
-         "Aggregate (Magnet- / Wirbelstromabscheider · Sieb · NIR)",
-         "Fraktionen & Ausbeute (Fe, NE, Holz, Kunststoff, Reststoff)"])
+    # ---------- Sortieranlage (LS 6.1, RecyTech GmbH) – frei anordenbar ------
+    _scomp = S_PRESETS[s_preset.value]
+    _lab2key = {S_STAGES[_k]["label"]: _k for _k in S_STAGES}
+    _sequence = []
+    for _d in [s_pos1, s_pos2, s_pos3, s_pos4, s_pos5, s_pos6, s_pos7, s_pos8, s_pos9]:
+        _kk = _lab2key.get(_d.value)
+        if _kk:
+            _sequence.append(_kk)
+    _sr = sortiermodell(s_durchsatz.value, _scomp, _sequence, s_stunden.value)
+    _seq = _sr["seq"]
+
+    def _fliessbild():
+        # Spalten: Aufgabe + je angewandter Stufe (mit ihren Ausschleusungen) + Sortierrest
+        _stufen = [(None, "Wertstofftonne", f"{s_durchsatz.value:.1f} t/h", "#74b9ff", [])]
+        for _k, _outs in _sr["stage_out"]:
+            _st = S_STAGES[_k]
+            _stufen.append((_k, _st["fb"], _st["sub"], _st["col"], _outs))
+        _stufen.append((None, "Sortierrest", "→ EBS/MVA", "#b2bec3", []))
+        _W, _GAP = 128, 34
+        _n = len(_stufen)
+        _wid = 20 + _n * (_W + _GAP)
+        p = [f'<svg viewBox="0 0 {_wid} 320" xmlns="http://www.w3.org/2000/svg" '
+             f'style="width:100%;min-width:{min(_wid, 1180)}px;height:auto;background:#0a1428;border-radius:6px">']
+        p.append('<defs>'
+                 '<marker id="fb_a" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 L2,4 Z" fill="#5b9bd5"/></marker>'
+                 '<marker id="fb_p" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 L2,4 Z" fill="#7f8fa6"/></marker>'
+                 '</defs>')
+        _yt = 34
+        _cols = []
+        for _i, (_k, _lab, _sub, _col, _outs) in enumerate(_stufen):
+            _x = 20 + _i * (_W + _GAP)
+            _cx = _x + _W / 2
+            _cols.append((_cx, _outs))
+            p.append(f'<rect x="{_x}" y="{_yt}" width="{_W}" height="58" rx="6" fill="#2d3436" stroke="{_col}" stroke-width="2"/>')
+            _ls = _lab.split("|")
+            for _j, _ln in enumerate(_ls):
+                p.append(f'<text x="{_cx}" y="{_yt+19+_j*13}" fill="{_col}" text-anchor="middle" font-size="11" font-family="monospace" font-weight="bold">{_ln}</text>')
+            p.append(f'<text x="{_cx}" y="{_yt+52}" fill="#9fb3c8" text-anchor="middle" font-size="8.5" font-family="monospace">{_sub}</text>')
+            if _i < _n - 1:
+                _xn = 20 + (_i + 1) * (_W + _GAP)
+                p.append(f'<line x1="{_x+_W}" y1="{_yt+29}" x2="{_xn}" y2="{_yt+29}" stroke="#5b9bd5" stroke-width="2.4" stroke-linecap="round" marker-end="url(#fb_a)"/>')
+
+        def _chip(cx, y, rec, w=140):
+            _name, _masse, _reinheit, _kind = rec
+            x0 = cx - w / 2
+            col = "#7f8fa6" if _kind == "rest" else "#00b894"
+            p.append(f'<rect x="{x0:.0f}" y="{y}" width="{w}" height="36" rx="5" fill="#16213e" stroke="{col}" stroke-width="1.4"/>')
+            p.append(f'<text x="{cx}" y="{y+14}" fill="#dfe6e9" text-anchor="middle" font-size="9" font-family="monospace" font-weight="bold">{_name.split(" (")[0]}</text>')
+            rh = "" if _reinheit is None else f" · {_reinheit*100:.0f}%"
+            p.append(f'<text x="{cx}" y="{y+28}" fill="#9fb3c8" text-anchor="middle" font-size="8.5" font-family="monospace">{_masse:.2f} t/h{rh}</text>')
+
+        for _cx, _outs in _cols:
+            if not _outs:
+                continue
+            if len(_outs) == 1:
+                p.append(f'<line x1="{_cx}" y1="{_yt+58}" x2="{_cx}" y2="150" stroke="#7f8fa6" stroke-width="2" stroke-linecap="round" marker-end="url(#fb_p)"/>')
+                _chip(_cx, 154, _outs[0])
+            else:
+                p.append(f'<line x1="{_cx}" y1="{_yt+58}" x2="{_cx}" y2="112" stroke="#7f8fa6" stroke-width="2" stroke-linecap="round"/>')
+                for _j, _rec in enumerate(_outs):
+                    _yy = 114 + _j * 46
+                    _chip(_cx, _yy, _rec)
+                    if _j < len(_outs) - 1:
+                        p.append(f'<line x1="{_cx}" y1="{_yy+36}" x2="{_cx}" y2="{_yy+46}" stroke="#7f8fa6" stroke-width="1.4"/>')
+        p.append('</svg>')
+        return "".join(p)
+
+    def _grundriss():
+        sx, Lm, Bm = 17.0, 40, 20
+        W, H = int(Lm * sx) + 80, int(Bm * sx) + 64
+        ox, oy = 50, 24
+        p = [f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" '
+             f'style="width:100%;min-width:{W}px;height:auto;background:#0a1428;border-radius:6px">']
+        p.append(f'<rect x="{ox}" y="{oy}" width="{Lm*sx:.0f}" height="{Bm*sx:.0f}" fill="#101a30" stroke="#74b9ff" stroke-width="2.5"/>')
+        for m in range(0, Lm + 1, 5):
+            xx = ox + m * sx
+            p.append(f'<line x1="{xx:.0f}" y1="{oy}" x2="{xx:.0f}" y2="{oy+Bm*sx:.0f}" stroke="#1c2c4a" stroke-width="1"/>')
+            p.append(f'<text x="{xx:.0f}" y="{oy-8}" fill="#6b7d91" text-anchor="middle" font-size="9" font-family="monospace">{m}</text>')
+        for m in range(0, Bm + 1, 5):
+            yy = oy + m * sx
+            p.append(f'<line x1="{ox}" y1="{yy:.0f}" x2="{ox+Lm*sx:.0f}" y2="{yy:.0f}" stroke="#1c2c4a" stroke-width="1"/>')
+            p.append(f'<text x="{ox-10}" y="{yy+3:.0f}" fill="#6b7d91" text-anchor="end" font-size="9" font-family="monospace">{m}</text>')
+        p.append(f'<text x="{ox+Lm*sx/2:.0f}" y="{oy+Bm*sx+22:.0f}" fill="#9fb3c8" text-anchor="middle" font-size="10" font-family="monospace">Länge 40 m</text>')
+        p.append(f'<text x="18" y="{oy+Bm*sx/2:.0f}" fill="#9fb3c8" text-anchor="middle" font-size="10" font-family="monospace" transform="rotate(-90 18 {oy+Bm*sx/2:.0f})">Breite 20 m</text>')
+        p.append(f'<text x="{ox+8}" y="{oy+16}" fill="#5b6b80" text-anchor="start" font-size="9" font-family="monospace">Raster 5 m · Deckenhöhe 8 m · Kran 5 t · 400 V · Druckluft</text>')
+        p.append('</svg>')
+        return "".join(p)
+
+    # Kontext-Karte (Lernsituation)
+    _ctx = mo.Html('''<div class="pls"><div class="pls-c">
+        <h3>🔀 LS 6.1 – Konzeption einer Wertstoffsortieranlage (RecyTech GmbH)</h3>
+        <div class="pls-soon">
+          Herr Bahr möchte ein neues Geschäftsfeld erschließen: Material aus der Wertstofftonne sortieren
+          und die gewonnenen Sekundärrohstoffe verkaufen. Diese Simulation unterstützt die Konzeptphase –
+          Verfahrensauswahl, Verfahrensfließbild, Grundriss und Wirtschaftlichkeit.
+          <div class="pls-sep"></div>
+          <b>Rahmenbedingungen:</b> Fraktionen Kunststoffe (PET, PE, PP), Metalle (Fe, Al), Papier/Karton ·
+          Durchsatz ca. 5 t/h · Halle 40 m × 20 m = 800 m², 8 m Höhe · 400 V, Druckluft, Kran 5 t.
+          <br><b>Aufgabe:</b> Sortierverfahren auswählen und begründen · Verfahrensfließbild · maßstäblichen
+          Grundriss (1:100) · Wirtschaftlichkeitsbetrachtung.
+          <div class="pls-sep"></div>
+          <span style="color:#8497ab;font-size:0.9em">Die neun Positionen sind <b>frei belegbar</b> (leere Positionen
+          = Stufe entfällt). Vorbelegt ist eine funktionierende <b>Grundlinie</b> (Sieb → Wind → Magnet → Wirbelstrom
+          → NIR). Sie arbeitet, hat aber zwei Schwächen: Der Windsichter trennt nach Gewicht und bekommt <b>Folie nicht
+          sauber vom Papier</b> – die Folie verschmutzt die PPK-Fraktion; zudem stört Rest-Folie die NIR-Kunststoff­sortierung,
+          und <b>Getränkekartons (FKN)</b> landen im Sortierrest. Über die freien Positionen stehen drei <b>Optimierungsstufen</b>
+          bereit: <b>Folienabscheider</b> (Folienabsaugung/NIR-Folie – zieht die Folie gezielt heraus), <b>NIR-FKN</b>
+          (Getränkekartons) und <b>NIR-Nachsortierung</b> (höhere Kunststoffausbeute). Ziel: die Grundlinie durch Auswahl
+          <b>und richtige Platzierung</b> wirtschaftlich verbessern. Orientierung (UBA / Grumnt 2022): In der LVP-Sortierung
+          wird die Folie <b>früh</b> ausgeschleust – prüft selbst, warum der Folienabscheider <b>vor</b> Windsichter und
+          NIR den größten Nutzen bringt und wo die anderen Stufen am besten stehen.</span>
+        </div>
+    </div></div>''')
+
+    # Massenbilanz-Tabelle
+    _tdst = "padding:6px 12px;border-bottom:1px solid #0f3460;font-family:monospace;white-space:nowrap"
+    _rows = ""
+    for _e in _sr["ergebnis"]:
+        _isp = _e["reinheit"] is not None
+        _rh = f"{_e['reinheit']*100:.0f} %" if _isp else "—"
+        _rhc = "#00b894" if (_isp and _e["reinheit"] >= 0.85) else ("#fdcb6e" if (_isp and _e["reinheit"] >= 0.6) else ("#e17055" if _isp else "#8497ab"))
+        _erl = _e["erloes"]
+        _erlc = "#00b894" if _erl > 0 else "#e17055"
+        _namecol = "#dfe6e9" if _isp else "#9fb3c8"
+        _rows += (f'<tr>'
+                  f'<td style="{_tdst};color:{_namecol};font-weight:bold">{_e["name"]}</td>'
+                  f'<td style="{_tdst};color:#dfe6e9;text-align:right">{_e["masse"]:.2f}</td>'
+                  f'<td style="{_tdst};color:#9fb3c8;text-align:right">{_e["m_a"]:,.0f}</td>'
+                  f'<td style="{_tdst};color:{_rhc};text-align:right">{_rh}</td>'
+                  f'<td style="{_tdst};color:#9fb3c8;text-align:right">{_e["eff_preis"]:.0f}</td>'
+                  f'<td style="{_tdst};color:{_erlc};text-align:right;font-weight:bold">{_erl/1000:,.0f}</td>'
+                  f'</tr>')
+    _bilanz = (f'<table style="border-collapse:collapse;font-size:0.85em;width:100%">'
+               f'<tr>'
+               f'<th style="{_tdst};color:#74b9ff;text-align:left;border-bottom:2px solid #0f3460">Fraktion</th>'
+               f'<th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">t/h</th>'
+               f'<th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">t/a</th>'
+               f'<th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">Reinheit</th>'
+               f'<th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">€/t</th>'
+               f'<th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">k€/a</th>'
+               f'</tr>{_rows}</table>')
+
+    # Wirtschaftlichkeit
+    _amort = f"{_sr['amort']:.1f} a" if _sr["amort"] else "kein Gewinn"
+    _amc = "c-ok" if (_sr["amort"] and _sr["amort"] < 5) else ("c-w" if _sr["amort"] else "c-d")
+    _deckc = "c-ok" if _sr["deckung_a"] > 0 else "c-d"
+
+    # Grundriss-Stellflächen
+    _foot_rows = "".join(
+        f'<tr><td style="{_tdst};color:#dfe6e9">{lab}</td>'
+        f'<td style="{_tdst};color:#9fb3c8;text-align:right">{L} × {B}</td>'
+        f'<td style="{_tdst};color:#9fb3c8;text-align:right">{L*B}</td></tr>'
+        for lab, (L, B) in _sr["foot"])
+    _footc = "c-ok" if _sr["foot_sum"] < 800 * 0.5 else "c-w"
+
+    _body = mo.Html(f'''<div class="pls">
+      <div class="pls-c" style="overflow-x:auto"><h3>Verfahrensfließbild (aktive Konfiguration)</h3>
+        {_fliessbild()}
+        <p style="color:#8497ab;font-size:0.8em;margin-top:6px">Grüne Ausschleusungen = verkaufsfähige Wertstofffraktionen · graue = Reststoffe. Reinheit &lt; 50 % ⇒ nicht vermarktbar.</p>
+      </div>
+      <div class="pls-g2">
+        <div class="pls-c"><h3>⚖️ Massen- &amp; Erlösbilanz</h3>{_bilanz}
+          <p style="color:#8497ab;font-size:0.78em;margin-top:6px">€/t = effektiver Erlös nach Reinheitsabschlag (Reststoffe: Entsorgungskosten). k€/a bei {s_stunden.value:,} h/a.</p>
+        </div>
+        <div class="pls-c"><h3>💶 Wirtschaftlichkeit (Richtwerte)</h3>
+          {vtbl(
+              vr("Durchsatz", f"{_sr['t_a']:,.0f}", "t/a")
+              + vr("Investition", f"{_sr['inv']/1000:,.0f}", "k€")
+              + vr("Erlöse Wertstoffe", f"{_sr['erloes_a']/1000:,.0f}", "k€/a", "c-ok")
+              + vr("Entsorgung Reste", f"{_sr['entsorg_a']/1000:,.0f}", "k€/a", "c-d")
+              + vr("Betriebskosten", f"{_sr['betrieb_a']/1000:,.0f}", "k€/a", "c-w")
+          )}
+          <div class="pls-sep"></div>
+          {vtbl(
+              vr("Deckungsbeitrag", f"{_sr['deckung_a']/1000:,.0f}", "k€/a", _deckc)
+              + vr("Amortisation", _amort, "", _amc)
+          )}
+          <p style="color:#8497ab;font-size:0.78em;margin-top:6px">Betriebskosten = Energie ({_sr['kw']:.0f} kW) + Personal (3 VZ) + Wartung (4 % Invest) + Overhead. Ohne Finanzierung, Transport, Annahmeentgelte, Preisschwankungen.</p>
+        </div>
+      </div>
+      <div class="pls-c" style="overflow-x:auto"><h3>📐 Grundriss-Referenz – Halle 40 m × 20 m (maßstäblich)</h3>
+        {_grundriss()}
+        <div class="pls-g2" style="margin-top:8px">
+          <div>{vtbl(
+              vr("Stellfläche Aggregate", f"{_sr['foot_sum']:.0f}", "m²", _footc)
+              + vr("Hallenfläche", "800", "m²")
+              + vr("Flächenbelegung", f"{_sr['foot_sum']/800*100:.0f}", "%", _footc)
+          )}</div>
+          <div><table style="border-collapse:collapse;font-size:0.82em;width:100%">
+            <tr><th style="{_tdst};color:#74b9ff;text-align:left;border-bottom:2px solid #0f3460">Aggregat</th>
+            <th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">L × B [m]</th>
+            <th style="{_tdst};color:#74b9ff;text-align:right;border-bottom:2px solid #0f3460">m²</th></tr>
+            {_foot_rows}</table></div>
+        </div>
+        <p style="color:#8497ab;font-size:0.8em;margin-top:6px">Die Maschinen sind bewusst <b>nicht</b> platziert – Anordnung, Materialfluss, Wartungsabstände und Verkehrswege plant die Teilgruppe selbst (Aufgabe 3). Stellflächen sind Richtwerte.</p>
+      </div>
+    </div>''')
+
+    _seqhead = mo.Html('<div class="pls"><div class="pls-c" style="margin-bottom:6px;padding:8px 12px">'
+                       '<b style="color:#74b9ff">🔧 Verfahrenskonzept – Aggregate frei anordnen</b>'
+                       '<span style="color:#8497ab;font-size:0.85em">&ensp;(Positionen von links nach rechts = Durchlaufreihenfolge · Doppelbelegung wird ignoriert)</span>'
+                       '</div></div>')
+    sortierung = mo.vstack([
+        _ctx,
+        mo.hstack([s_preset, s_durchsatz, s_stunden], justify="start", gap=1, wrap=True),
+        _seqhead,
+        mo.hstack([s_pos1, s_pos2, s_pos3, s_pos4, s_pos5], justify="start", gap=1, wrap=True),
+        mo.hstack([s_pos6, s_pos7, s_pos8, s_pos9], justify="start", gap=1, wrap=True),
+        _body,
+    ])
 
     vergaerung = geruest(
         "🌱 Vergärung & Kompostierung",
@@ -392,7 +805,7 @@ def _(MVA_URL, bio_t, heizwert, ks_t, mo, muell_t, niederschlag, sortier_t):
     deponie = geruest(
         "⛰️ Deponie (DK II)",
         "Schwerpunkt Sickerwasser – die direkte fachliche Brücke zur Abwasserbehandlung. "
-        "Hinweis zur Authentizität: Die reale Asdonkshof-Deponie nimmt bewusst nur reaktionsarme, "
+        "Authentizitätshinweis: Eine reale DK-II-Deponie nimmt bewusst nur reaktionsarme, "
         "nicht gasbildende Stoffe auf; für die Sickerwasser-Lernsituationen empfiehlt sich daher ein "
         "bewusst als „klassisch“ benanntes Deponie-Modell.",
         ["Einbau (Schlacke, Bauschutt, mineralische Abfälle)",
