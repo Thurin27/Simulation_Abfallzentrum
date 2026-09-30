@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#0a1428; --panel:#16213e; --border:#0f3460; --txt:#dfe6e9; --mut:#9fb3c8; --accent:#74b9ff; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--txt); font-family:'Consolas','Courier New',monospace; }
+  .wrap { padding:8px 10px 12px; }
+  .bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px; }
+  .chip { background:var(--panel); border:1px solid var(--border); border-radius:6px; color:var(--txt);
+          font-family:inherit; font-size:12px; padding:5px 9px; cursor:pointer; }
+  .chip:hover { border-color:var(--accent); }
+  .chip small { color:var(--mut); }
+  .sep { width:1px; height:22px; background:var(--border); margin:0 4px; }
+  input[type=number] { width:52px; background:#0e1a30; border:1px solid var(--border); color:var(--txt);
+          border-radius:4px; font-family:inherit; font-size:12px; padding:3px 5px; }
+  label { font-size:12px; color:var(--mut); }
+  .info { font-size:12px; color:var(--mut); margin:6px 2px 0; }
+  .info b { color:var(--txt); }
+  .warn { color:#e17055; font-weight:bold; }
+  .ok { color:#00b894; font-weight:bold; }
+  svg { touch-action:none; user-select:none; display:block; max-width:100%; height:auto; }
+</style></head>
+<body><div class="wrap">
+  <div class="bar" id="palette"></div>
+  <div class="bar">
+    <label>Eigene Box: L</label><input type="number" id="cw" value="4" min="0.5" max="40" step="0.5">
+    <label>&times; B</label><input type="number" id="ch" value="3" min="0.5" max="20" step="0.5">
+    <label>m</label>
+    <button class="chip" id="addCustom">&#43; Box erstellen</button>
+    <span class="sep"></span>
+    <button class="chip" id="reset">&#8634; Zur&uuml;cksetzen</button>
+    <span style="font-size:11px;color:var(--mut)">Ziehen = verschieben &middot; Doppelklick = 90&deg; drehen &middot; &times; = l&ouml;schen &middot; Raster 0,5 m</span>
+  </div>
+  <svg id="plan" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div class="info" id="info"></div>
+</div>
+<script>
+(function(){
+  "use strict";
+  var CAT = [{"name": "Siebanlage", "w": 8, "h": 3}, {"name": "Folienabscheider", "w": 4, "h": 3}, {"name": "Windsichter", "w": 4, "h": 3}, {"name": "Magnetabscheider", "w": 2, "h": 2}, {"name": "Wirbelstromabscheider", "w": 3, "h": 2}, {"name": "NIR-FKN (Kartons)", "w": 5, "h": 3}, {"name": "NIR-Sortierung", "w": 6, "h": 3}, {"name": "NIR-Nachsortierung", "w": 6, "h": 3}, {"name": "Aufgabe/Dosierung", "w": 6, "h": 4}, {"name": "Ballenpresse", "w": 5, "h": 4}];
+  var HALL_L = 40, HALL_B = 20, S = 18, OX = 40, OY = 22, GRID = 0.5;
+  var svg = document.getElementById("plan");
+  var W = OX + HALL_L*S + 16, H = OY + HALL_B*S + 26;
+  svg.setAttribute("viewBox", "0 0 "+W+" "+H); svg.setAttribute("width", W);
+  var boxes = [], uid = 1;
+  var palette = ["#74b9ff","#fdcb6e","#00cec9","#e17055","#e84393","#e0a458","#a29bfe","#6c8cff","#55efc4","#ff9ff3"];
+  function svgEl(tag, attrs){ var e=document.createElementNS("http://www.w3.org/2000/svg",tag); for(var k in attrs){e.setAttribute(k,attrs[k]);} return e; }
+  function snap(v){ return Math.round(v/GRID)*GRID; }
+  function overlaps(a,b){ return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y; }
+  function addBox(name,w,h,color){
+    var bx=snap(1+(boxes.length*1.5)%Math.max(1,(HALL_L-w)));
+    var by=snap(1+(boxes.length*1.0)%Math.max(1,(HALL_B-h)));
+    boxes.push({id:uid++,name:name,w:w,h:h,x:Math.min(bx,HALL_L-w),y:Math.min(by,HALL_B-h),color:color||palette[(uid)%palette.length]});
+    render();
+  }
+  function render(){
+    while(svg.firstChild) svg.removeChild(svg.firstChild);
+    svg.appendChild(svgEl("rect",{x:OX,y:OY,width:HALL_L*S,height:HALL_B*S,fill:"#101a30",stroke:"#74b9ff","stroke-width":2.5}));
+    var i,x,y;
+    for(i=0;i<=HALL_L;i++){ x=OX+i*S;
+      svg.appendChild(svgEl("line",{x1:x,y1:OY,x2:x,y2:OY+HALL_B*S,stroke:(i%5===0?"#24406a":"#16294a"),"stroke-width":(i%5===0?1:0.5)}));
+      if(i%5===0){ var tx=svgEl("text",{x:x,y:OY-7,fill:"#6b7d91","font-size":9,"text-anchor":"middle","font-family":"monospace"}); tx.textContent=i; svg.appendChild(tx);} }
+    for(i=0;i<=HALL_B;i++){ y=OY+i*S;
+      svg.appendChild(svgEl("line",{x1:OX,y1:y,x2:OX+HALL_L*S,y2:y,stroke:(i%5===0?"#24406a":"#16294a"),"stroke-width":(i%5===0?1:0.5)}));
+      if(i%5===0){ var ty=svgEl("text",{x:OX-8,y:y+3,fill:"#6b7d91","font-size":9,"text-anchor":"end","font-family":"monospace"}); ty.textContent=i; svg.appendChild(ty);} }
+    var lx=svgEl("text",{x:OX+HALL_L*S/2,y:H-6,fill:"#9fb3c8","font-size":10,"text-anchor":"middle","font-family":"monospace"}); lx.textContent="Länge 40 m"; svg.appendChild(lx);
+    var ly=svgEl("text",{x:12,y:OY+HALL_B*S/2,fill:"#9fb3c8","font-size":10,"text-anchor":"middle","font-family":"monospace","transform":"rotate(-90 12 "+(OY+HALL_B*S/2)+")"}); ly.textContent="Breite 20 m"; svg.appendChild(ly);
+    boxes.forEach(function(b){
+      var bad=boxes.some(function(o){return o.id!==b.id && overlaps(b,o);});
+      var g=svgEl("g",{"data-id":b.id,style:"cursor:grab"});
+      var px=OX+b.x*S, py=OY+b.y*S, pw=b.w*S, ph=b.h*S;
+      g.appendChild(svgEl("rect",{x:px,y:py,width:pw,height:ph,rx:3,fill:b.color+"33",stroke:(bad?"#e17055":b.color),"stroke-width":(bad?2.5:2)}));
+      var t1=svgEl("text",{x:px+pw/2,y:py+ph/2-2,fill:"#dfe6e9","font-size":Math.max(8,Math.min(11,pw/8)),"text-anchor":"middle","font-family":"monospace","font-weight":"bold"}); t1.textContent=b.name; g.appendChild(t1);
+      var t2=svgEl("text",{x:px+pw/2,y:py+ph/2+11,fill:"#9fb3c8","font-size":8.5,"text-anchor":"middle","font-family":"monospace"}); t2.textContent=b.w+"×"+b.h+" m"; g.appendChild(t2);
+      var del=svgEl("text",{x:px+pw-7,y:py+12,fill:"#e17055","font-size":13,"text-anchor":"middle","font-family":"monospace","font-weight":"bold",style:"cursor:pointer"}); del.textContent="✕"; del.setAttribute("data-del",b.id); g.appendChild(del);
+      svg.appendChild(g);
+    });
+    updateInfo();
+  }
+  function updateInfo(){
+    var sum=boxes.reduce(function(a,b){return a+b.w*b.h;},0);
+    var anyBad=boxes.some(function(b){return boxes.some(function(o){return o.id!==b.id && overlaps(b,o);});});
+    var pct=Math.round(sum/(HALL_L*HALL_B)*100);
+    document.getElementById("info").innerHTML="Belegte Stellfläche: <b>"+sum.toFixed(1)+" m²</b> von 800 m² (<b>"+pct+" %</b>) · Boxen: <b>"+boxes.length+"</b> · "
+      +(anyBad?"<span class='warn'>⚠ Überlappung – Boxen entzerren</span>":"<span class='ok'>✓ keine Überlappung</span>")
+      +" &nbsp;<span style='color:#6b7d91'>(Wartungsabstände/Verkehrswege selbst einplanen)</span>";
+  }
+  var drag=null;
+  function ptM(evt){ var r=svg.getBoundingClientRect(); var sc=W/r.width; return {mx:((evt.clientX-r.left)*sc-OX)/S, my:((evt.clientY-r.top)*sc-OY)/S}; }
+  svg.addEventListener("pointerdown",function(evt){
+    var del=evt.target.getAttribute&&evt.target.getAttribute("data-del");
+    if(del){ boxes=boxes.filter(function(b){return String(b.id)!==String(del);}); render(); return; }
+    var g=evt.target.closest?evt.target.closest("g[data-id]"):null; if(!g) return;
+    var b=boxes.filter(function(x){return String(x.id)===String(g.getAttribute("data-id"));})[0]; if(!b) return;
+    var p=ptM(evt); drag={b:b,dx:p.mx-b.x,dy:p.my-b.y}; svg.setPointerCapture(evt.pointerId);
+  });
+  svg.addEventListener("pointermove",function(evt){
+    if(!drag) return; var p=ptM(evt);
+    drag.b.x=Math.max(0,Math.min(HALL_L-drag.b.w,snap(p.mx-drag.dx)));
+    drag.b.y=Math.max(0,Math.min(HALL_B-drag.b.h,snap(p.my-drag.dy))); render();
+  });
+  svg.addEventListener("pointerup",function(){drag=null;});
+  svg.addEventListener("pointercancel",function(){drag=null;});
+  svg.addEventListener("dblclick",function(evt){
+    var g=evt.target.closest?evt.target.closest("g[data-id]"):null; if(!g) return;
+    var b=boxes.filter(function(x){return String(x.id)===String(g.getAttribute("data-id"));})[0]; if(!b) return;
+    var w=b.h,h=b.w; b.w=w; b.h=h; b.x=Math.max(0,Math.min(HALL_L-b.w,b.x)); b.y=Math.max(0,Math.min(HALL_B-b.h,b.y)); render();
+  });
+  var pal=document.getElementById("palette");
+  CAT.forEach(function(m,idx){ var btn=document.createElement("button"); btn.className="chip";
+    btn.innerHTML=m.name+" <small>"+m.w+"×"+m.h+"</small>";
+    btn.addEventListener("click",function(){ addBox(m.name,m.w,m.h,palette[idx%palette.length]); }); pal.appendChild(btn); });
+  document.getElementById("addCustom").addEventListener("click",function(){
+    var w=parseFloat(document.getElementById("cw").value), h=parseFloat(document.getElementById("ch").value);
+    if(!(w>0&&h>0)) return; w=Math.min(w,HALL_L); h=Math.min(h,HALL_B); addBox("Box",snap(w),snap(h),"#b2bec3");
+  });
+  document.getElementById("reset").addEventListener("click",function(){ boxes=[]; render(); });
+  render();
+})();
+</script></body></html>

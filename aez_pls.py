@@ -22,11 +22,13 @@ def _():
 @app.cell
 def _():
     # ── Konfiguration ────────────────────────────────────────────────
-    # Deploy-URL der MVA-Spoke-App (mva_pls). Nach dem Deployment hier die
-    # echte GitHub-Pages-URL eintragen – der Link im Lageplan und im MVA-Tab
-    # zeigt dann direkt auf die Simulation.
+    # Deploy-URLs. Nach dem Deployment hier die echten Adressen eintragen.
+    # MVA-Spoke-App (mva_pls) – Link im Lageplan und im MVA-Tab:
     MVA_URL = "https://thurin27.github.io/mva_pls/"
-    return (MVA_URL,)
+    # Grundriss-Planer (eigenständige HTML-Seite, z. B. docs/grundriss/index.html).
+    # Relative Adresse funktioniert, wenn sie neben dieser App liegt:
+    GRUNDRISS_URL = "grundriss/"
+    return GRUNDRISS_URL, MVA_URL
 
 
 @app.cell
@@ -269,9 +271,9 @@ def _(S_ORDER, S_PRESETS, S_STAGES, mo):
 
 
 @app.cell
-def _(MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo, muell_t,
-      niederschlag, s_durchsatz, s_pos1, s_pos2, s_pos3, s_pos4, s_pos5,
-      s_pos6, s_pos7, s_pos8, s_pos9, s_preset, s_stunden, sortier_t,
+def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
+      muell_t, niederschlag, s_durchsatz, s_pos1, s_pos2, s_pos3, s_pos4,
+      s_pos5, s_pos6, s_pos7, s_pos8, s_pos9, s_preset, s_stunden, sortier_t,
       sortiermodell):
     # =========================================================================
     #  AEZ-LEITSTAND – Aufbau
@@ -652,27 +654,6 @@ def _(MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo, muell_t,
         p.append('</svg>')
         return "".join(p)
 
-    def _grundriss():
-        sx, Lm, Bm = 17.0, 40, 20
-        W, H = int(Lm * sx) + 80, int(Bm * sx) + 64
-        ox, oy = 50, 24
-        p = [f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" '
-             f'style="width:100%;min-width:{W}px;height:auto;background:#0a1428;border-radius:6px">']
-        p.append(f'<rect x="{ox}" y="{oy}" width="{Lm*sx:.0f}" height="{Bm*sx:.0f}" fill="#101a30" stroke="#74b9ff" stroke-width="2.5"/>')
-        for m in range(0, Lm + 1, 5):
-            xx = ox + m * sx
-            p.append(f'<line x1="{xx:.0f}" y1="{oy}" x2="{xx:.0f}" y2="{oy+Bm*sx:.0f}" stroke="#1c2c4a" stroke-width="1"/>')
-            p.append(f'<text x="{xx:.0f}" y="{oy-8}" fill="#6b7d91" text-anchor="middle" font-size="9" font-family="monospace">{m}</text>')
-        for m in range(0, Bm + 1, 5):
-            yy = oy + m * sx
-            p.append(f'<line x1="{ox}" y1="{yy:.0f}" x2="{ox+Lm*sx:.0f}" y2="{yy:.0f}" stroke="#1c2c4a" stroke-width="1"/>')
-            p.append(f'<text x="{ox-10}" y="{yy+3:.0f}" fill="#6b7d91" text-anchor="end" font-size="9" font-family="monospace">{m}</text>')
-        p.append(f'<text x="{ox+Lm*sx/2:.0f}" y="{oy+Bm*sx+22:.0f}" fill="#9fb3c8" text-anchor="middle" font-size="10" font-family="monospace">Länge 40 m</text>')
-        p.append(f'<text x="18" y="{oy+Bm*sx/2:.0f}" fill="#9fb3c8" text-anchor="middle" font-size="10" font-family="monospace" transform="rotate(-90 18 {oy+Bm*sx/2:.0f})">Breite 20 m</text>')
-        p.append(f'<text x="{ox+8}" y="{oy+16}" fill="#5b6b80" text-anchor="start" font-size="9" font-family="monospace">Raster 5 m · Deckenhöhe 8 m · Kran 5 t · 400 V · Druckluft</text>')
-        p.append('</svg>')
-        return "".join(p)
-
     # Kontext-Karte (Lernsituation)
     _ctx = mo.Html('''<div class="pls"><div class="pls-c">
         <h3>🔀 Wertstoffsortieranlage</h3>
@@ -720,14 +701,6 @@ def _(MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo, muell_t,
     _amc = "c-ok" if (_sr["amort"] and _sr["amort"] < 5) else ("c-w" if _sr["amort"] else "c-d")
     _deckc = "c-ok" if _sr["deckung_a"] > 0 else "c-d"
 
-    # Grundriss-Stellflächen
-    _foot_rows = "".join(
-        f'<tr><td style="{_tdst};color:#dfe6e9">{lab}</td>'
-        f'<td style="{_tdst};color:#9fb3c8;text-align:right">{L} × {B}</td>'
-        f'<td style="{_tdst};color:#9fb3c8;text-align:right">{L*B}</td></tr>'
-        for lab, (L, B) in _sr["foot"])
-    _footc = "c-ok" if _sr["foot_sum"] < 800 * 0.5 else "c-w"
-
     _body = mo.Html(f'''<div class="pls">
       <div class="pls-c" style="overflow-x:auto"><h3>Verfahrensfließbild (aktive Konfiguration)</h3>
         {_fliessbild()}
@@ -753,23 +726,26 @@ def _(MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo, muell_t,
           <p style="color:#8497ab;font-size:0.78em;margin-top:6px">Betriebskosten = Energie ({_sr['kw']:.0f} kW) + Personal (3 VZ) + Wartung (4 % Invest) + Overhead. Ohne Finanzierung, Transport, Annahmeentgelte, Preisschwankungen.</p>
         </div>
       </div>
-      <div class="pls-c" style="overflow-x:auto"><h3>📐 Grundriss-Referenz – Halle 40 m × 20 m (maßstäblich)</h3>
-        {_grundriss()}
-        <div class="pls-g2" style="margin-top:8px">
-          <div>{vtbl(
-              vr("Stellfläche Aggregate", f"{_sr['foot_sum']:.0f}", "m²", _footc)
-              + vr("Hallenfläche", "800", "m²")
-              + vr("Flächenbelegung", f"{_sr['foot_sum']/800*100:.0f}", "%", _footc)
-          )}</div>
-          <div><table style="border-collapse:collapse;font-size:0.82em;width:100%">
-            <tr><th style="{_thst};text-align:left">Aggregat</th>
-            <th style="{_thst};text-align:right">L × B [m]</th>
-            <th style="{_thst};text-align:right">m²</th></tr>
-            {_foot_rows}</table></div>
-        </div>
-        <p style="color:#8497ab;font-size:0.8em;margin-top:6px">Die Maschinen sind bewusst <b>nicht</b> platziert – Anordnung, Materialfluss, Wartungsabstände und Verkehrswege plant die Teilgruppe selbst (Aufgabe 3). Stellflächen sind Richtwerte.</p>
-      </div>
     </div>''')
+
+    # Grundriss-Planer – eigenständige Seite (Drag & Drop), per Link geöffnet
+    _grundriss_head = mo.Html(f'''<div class="pls"><div class="pls-c" style="border-color:#00cec9">
+        <h3>📐 Grundriss-Planer – Halle 40 m × 20 m (interaktiv)</h3>
+        <div class="pls-soon">
+          Aggregate aus der Palette anklicken (fügt eine maßstäbliche Box ein) oder eigene Box mit L × B erstellen,
+          dann per Ziehen platzieren. Doppelklick dreht um 90°, ✕ löscht. Wartungsabstände und Verkehrswege planen
+          die Teilgruppen selbst.
+          <div style="margin:10px 0">
+            <a href="{GRUNDRISS_URL}" target="_blank" rel="noopener"
+               style="display:inline-block;background:#00cec9;color:#0a1428;font-weight:bold;text-decoration:none;
+               padding:12px 24px;border-radius:6px;font-family:monospace;font-size:1.05em">
+               📐 Grundriss-Planer öffnen ▸</a>
+          </div>
+          <span style="color:#8497ab;font-size:0.85em">Öffnet den Planer in einem neuen Tab (volle Fläche zum Planen).
+          Führt der Link ins Leere, ist oben in der Datei die Konstante <b>GRUNDRISS_URL</b> auf die Deploy-Adresse
+          der Planer-Seite zu setzen.</span>
+        </div>
+    </div></div>''')
 
     _seqhead = mo.Html('<div class="pls"><div class="pls-c" style="margin-bottom:6px;padding:8px 12px">'
                        '<b style="color:#74b9ff">🔧 Verfahrenskonzept – Aggregate frei anordnen</b>'
@@ -782,6 +758,7 @@ def _(MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo, muell_t,
         mo.hstack([s_pos1, s_pos2, s_pos3, s_pos4, s_pos5], justify="start", gap=1, wrap=True),
         mo.hstack([s_pos6, s_pos7, s_pos8, s_pos9], justify="start", gap=1, wrap=True),
         _body,
+        _grundriss_head,
     ])
 
     vergaerung = geruest(
