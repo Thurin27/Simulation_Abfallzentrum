@@ -24,7 +24,7 @@ def _():
     # ── Konfiguration ────────────────────────────────────────────────
     # Deploy-URLs. Nach dem Deployment hier die echten Adressen eintragen.
     # MVA-Spoke-App (mva_pls) – Link im Lageplan und im MVA-Tab:
-    MVA_URL = "https://thurin27.github.io/mva_pls/"
+    MVA_URL = "mva/"
     # Grundriss-Planer (eigenständige HTML-Seite, z. B. docs/grundriss/index.html).
     # Relative Adresse funktioniert, wenn sie neben dieser App liegt:
     GRUNDRISS_URL = "grundriss/"
