@@ -24,7 +24,7 @@ def _():
     # ── Konfiguration ────────────────────────────────────────────────
     # Deploy-URLs. Nach dem Deployment hier die echten Adressen eintragen.
     # MVA-Spoke-App (mva_pls) – Link im Lageplan und im MVA-Tab:
-    MVA_URL = "mva/"
+    MVA_URL = "https://thurin27.github.io/mva_pls/"
     # Grundriss-Planer (eigenständige HTML-Seite, z. B. docs/grundriss/index.html).
     # Relative Adresse funktioniert, wenn sie neben dieser App liegt:
     GRUNDRISS_URL = "grundriss/"
@@ -127,13 +127,14 @@ def _():
         "eddy":   dict(label="Wirbelstromabscheider", fb="Wirbelstrom-|abscheider", sub="Al / NE",         col="#e84393", invest=450000, kw=30, foot=(3, 2), cap=3.6, rolle="base"),
         "nirfkn": dict(label="NIR-FKN (Kartons)",     fb="NIR-FKN",                 sub="Getränkekartons", col="#e0a458", invest=800000, kw=70, foot=(5, 3), cap=3.6, rolle="opt"),
         "nir":    dict(label="NIR-Sortierung",        fb="NIR-|Sortierung",         sub="PET · PE · PP",   col="#a29bfe", invest=1500000, kw=110, foot=(6, 3), cap=3.4, rolle="base"),
-        "nir2":   dict(label="NIR-Nachsortierung",    fb="NIR-Nach-|sortierung",    sub="Ausbeute ↑ · PPK",      col="#6c8cff", invest=1200000, kw=80, foot=(6, 3), cap=1.5, rolle="opt"),
+        "nirppk": dict(label="NIR-PPK (Papier)",      fb="NIR-PPK",                 sub="PPK-Nachreinigung", col="#55efc4", invest=500000, kw=45, foot=(5, 3), cap=3.0, rolle="opt"),
+        "nir2":   dict(label="NIR-Nachsortierung",    fb="NIR-Nach-|sortierung",    sub="PET · PE · PP rein", col="#6c8cff", invest=900000, kw=60, foot=(6, 3), cap=1.5, rolle="opt"),
     }
     # Grundausstattung: Sackaufreißer, Aufgabebunker/Dosierung, Fördertechnik, Ballenpresse, Steuerung/E-Technik,
     # Montage und Inbetriebnahme
     S_GRUND_INVEST = 1800000
     S_GRUND_KW = 120
-    S_ORDER = ["hand", "sieb", "ballistik", "wind", "magnet", "eddy", "nirfkn", "nir", "nir2"]
+    S_ORDER = ["hand", "sieb", "ballistik", "wind", "nirppk", "magnet", "eddy", "nirfkn", "nir", "nir2"]
 
     # Bandbelegung: bis 85 % Nennlast volle Trennleistung, darüber sinkt die Ausbeute
     # und Fehlausträge (Mitreißen von Fremdmaterial) nehmen zu.
@@ -173,7 +174,7 @@ def _():
         # Zustand der Linie: klassiert = Siebung erfolgt (enges Korngrößenband für die
         # nachfolgenden Trenner); nur3d = Ballistik hat die Flachteile (2D) abgezogen
         zustand = dict(klassiert=False, nur3d=False)
-        S_KLASSIERT_NOETIG = ("wind", "ballistik", "eddy", "nirfkn", "nir", "nir2")
+        S_KLASSIERT_NOETIG = ("wind", "ballistik", "eddy", "nirfkn", "nir", "nir2", "nirppk")
 
         def pull(eta):
             prod = {}
@@ -217,9 +218,46 @@ def _():
                 o.append(emit(poly, pull({m: (rec if m == poly else cc[m] * f_fehl) for m in MATS}), "prod"))
             return o
 
+        def produkt_chips(namen):
+            # Anzeige-Datensätze (ohne Massenbuchung) für bereits erzeugte Produktfraktionen
+            recs = []
+            for name in namen:
+                prod = produkte[name]
+                masse = sum(prod.values())
+                reinheit = (prod[S_ZIEL[name]] / masse) if masse > 1e-9 else 0.0
+                recs.append((name, masse, reinheit, "prod"))
+            return recs
+
+        def nachreinigung(namen, eta_fremd, f_rec, f_fehl, rueck_in_linie=True):
+            # Zweiter Sortierdurchgang über bereits erzeugte Produktströme (Negativsortierung):
+            # Fremdstoffe raus, wenige Fehlausträge des Zielmaterials; beides zurück in den Hauptstrom
+            vorhanden = [n for n in namen if n in produkte]
+            if not vorhanden:
+                return []
+            rueck = 0.0
+            rueck_m = {m: 0.0 for m in MATS}
+            for name in vorhanden:
+                prod = produkte[name]
+                ziel = S_ZIEL[name]
+                for m in MATS:
+                    d = prod[m] * (min(0.95, eta_fremd * f_rec) if m != ziel else 0.03 * f_fehl)
+                    prod[m] -= d
+                    rueck_m[m] += d
+                    rueck += d
+            if rueck_in_linie:
+                for m in MATS:
+                    main[m] += rueck_m[m]
+                return produkt_chips(vorhanden) + [("Fehlwürfe (→ Rücklauf)", rueck, None, "rest")]
+            merge(reste, "Sortierrest (→ EBS/MVA)", rueck_m)
+            return produkt_chips(vorhanden) + [("Fehlwürfe (→ Sortierrest)", rueck, None, "rest")]
+
         def apply_stage(key):
             o = []
             zulauf = sum(main.values())
+            if key == "nir2":
+                zulauf = sum(sum(produkte[n].values()) for n in ("PET", "PE", "PP") if n in produkte)
+            elif key == "nirppk":
+                zulauf = sum(produkte["PPK (Papier/Karton)"].values()) if "PPK (Papier/Karton)" in produkte else 0.0
             cap = S_STAGES[key]["cap"]
             bel = (zulauf / cap) if cap else None
             f_rec, f_fehl = s_lastfaktor(bel) if bel is not None else (1.0, 1.0)
@@ -258,6 +296,7 @@ def _():
                             prod[m] -= d
                             raus[m] += d
                     merge(reste, "Sortierrest (→ EBS/MVA)", raus)
+                    o += produkt_chips(list(produkte))
                     o.append(("Störstoffe (→ Sortierrest)", sum(raus.values()), None, "rest"))
             elif key == "sieb":
                 eta = {m: (0.55 if m == "Rest" else 0.03) for m in MATS}
@@ -290,16 +329,13 @@ def _():
                 cc = dict(PET=0.02, PE=0.02, PP=0.02, Folie=0.05, FKN=0.03, Fe=0.05, Al=0.05, PPK=0.04, Rest=0.04)
                 o += nir_stufe(0.92, cc, f_rec, f_fehl)
             elif key == "nir2":
-                # Nachreinigung der PPK-Fraktion (positive NIR-Sortierung auf Papier): Fremdstoffe
-                # aus dem Windsichter-Leichtgut gehen zurück in den Hauptstrom
-                ppk = produkte.get("PPK (Papier/Karton)")
-                if ppk:
-                    for m in MATS:
-                        d = ppk[m] * (0.02 if m == "PPK" else 0.70 * f_rec)
-                        ppk[m] -= d
-                        main[m] += d
-                cc = {m: 0.015 for m in MATS}
-                o += nir_stufe(0.85, cc, f_rec, f_fehl)
+                # Nachreinigung: die von der Haupt-NIR ausgeschleusten Kunststoffströme laufen ein
+                # zweites Mal über eine NIR; Fehlwürfe gehen in den Hauptstrom zurück
+                o += nachreinigung(["PET", "PE", "PP"], 0.75, f_rec, f_fehl)
+            elif key == "nirppk":
+                # Papier-NIR auf der Leichtgutlinie: reinigt das Windsichter-Leichtgut nach
+                # (Folien, Kunststoffe, Verbunde → Sortierrest)
+                o += nachreinigung(["PPK (Papier/Karton)"], 0.70, f_rec, f_fehl, rueck_in_linie=False)
             return o, bel
 
         for k in seq:
@@ -371,7 +407,7 @@ def _():
 @app.cell
 def _(S_ORDER, S_PRESETS, S_STAGES, mo):
     # === LS 6.1 – Bedienelemente Sortieranlage ===
-    # Aggregate über 9 Positionen FREI anordnen (Reihenfolge = Verfahrenskonzept).
+    # Aggregate über 10 Positionen FREI anordnen (Reihenfolge = Verfahrenskonzept).
     s_preset = mo.ui.dropdown(options=list(S_PRESETS.keys()),
                               value="Gemischte Wertstofftonne", label="Input-Zusammensetzung")
     s_durchsatz = mo.ui.slider(start=1.0, stop=10.0, step=0.5, value=5.0,
@@ -399,14 +435,15 @@ def _(S_ORDER, S_PRESETS, S_STAGES, mo):
     s_pos7 = mo.ui.dropdown(options=_opts, value=_leer, label="Position 7")
     s_pos8 = mo.ui.dropdown(options=_opts, value=_leer, label="Position 8")
     s_pos9 = mo.ui.dropdown(options=_opts, value=_leer, label="Position 9")
+    s_pos10 = mo.ui.dropdown(options=_opts, value=_leer, label="Position 10")
     return (s_durchsatz, s_entgelt, s_hand, s_markt, s_pos1, s_pos2, s_pos3, s_pos4,
-            s_pos5, s_pos6, s_pos7, s_pos8, s_pos9, s_preset, s_stunden)
+            s_pos5, s_pos6, s_pos7, s_pos8, s_pos9, s_pos10, s_preset, s_stunden)
 
 
 @app.cell
 def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
       muell_t, niederschlag, s_durchsatz, s_entgelt, s_hand, s_markt, s_pos1, s_pos2,
-      s_pos3, s_pos4, s_pos5, s_pos6, s_pos7, s_pos8, s_pos9, s_preset,
+      s_pos3, s_pos4, s_pos5, s_pos6, s_pos7, s_pos8, s_pos9, s_pos10, s_preset,
       s_stunden, sortier_t, sortiermodell):
     # =========================================================================
     #  AEZ-LEITSTAND – Aufbau
@@ -724,7 +761,7 @@ def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
     _scomp = S_PRESETS[s_preset.value]
     _lab2key = {S_STAGES[_k]["label"]: _k for _k in S_STAGES}
     _sequence = []
-    for _d in [s_pos1, s_pos2, s_pos3, s_pos4, s_pos5, s_pos6, s_pos7, s_pos8, s_pos9]:
+    for _d in [s_pos1, s_pos2, s_pos3, s_pos4, s_pos5, s_pos6, s_pos7, s_pos8, s_pos9, s_pos10]:
         _kk = _lab2key.get(_d.value)
         if _kk:
             _sequence.append(_kk)
@@ -738,12 +775,20 @@ def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
         _stufen = [(None, "Wertstofftonne", f"{s_durchsatz.value:.1f} t/h", "#74b9ff", [], None)]
         for _k, _outs, _bel in _sr["stage_out"]:
             _st = S_STAGES[_k]
-            _stufen.append((_k, _st["fb"], _st["sub"], _st["col"], _outs, _bel))
+            _fb, _sub = _st["fb"], _st["sub"]
+            if _k == "hand":
+                if any(_r[3] == "prod" for _r in _outs):
+                    _fb, _sub = "Sortier-|kabinen", "Qualitätskontrolle"
+                else:
+                    _sub = "Vorsortierung"
+            _stufen.append((_k, _fb, _sub, _st["col"], _outs, _bel))
         _stufen.append((None, "Sortierrest", "→ EBS/MVA", "#b2bec3", [], None))
         _W, _GAP = 128, 34
         _n = len(_stufen)
         _wid = 20 + _n * (_W + _GAP)
-        p = [f'<svg viewBox="0 0 {_wid} 320" xmlns="http://www.w3.org/2000/svg" '
+        _maxo = max([len(_st[4]) for _st in _stufen] + [1])
+        _hoe = max(320, 114 + _maxo * 46 + 14)
+        p = [f'<svg viewBox="0 0 {_wid} {_hoe}" xmlns="http://www.w3.org/2000/svg" '
              f'style="width:100%;min-width:{min(_wid, 1180)}px;height:auto;background:#0a1428;border-radius:6px">']
         p.append('<defs>'
                  '<marker id="fb_a" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 L2,4 Z" fill="#5b9bd5"/></marker>'
@@ -799,7 +844,7 @@ def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
           <b>Rahmenbedingungen:</b> Fraktionen Kunststoffe (PET, PE, PP), Metalle (Fe, Al), Papier/Karton ·
           Durchsatz ca. 5 t/h · Halle 40 m × 20 m = 800 m², 8 m Höhe · 400 V, Druckluft, Kran 5 t.
           <div class="pls-sep"></div>
-          <span style="color:#8497ab;font-size:0.9em">Die neun Positionen sind <b>frei belegbar</b>
+          <span style="color:#8497ab;font-size:0.9em">Die zehn Positionen sind <b>frei belegbar</b>
           (leere Positionen = Stufe entfällt).</span>
         </div>
     </div></div>''')
@@ -902,7 +947,7 @@ def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
         mo.hstack([s_entgelt, s_markt, s_hand], justify="start", gap=1, wrap=True),
         _seqhead,
         mo.hstack([s_pos1, s_pos2, s_pos3, s_pos4, s_pos5], justify="start", gap=1, wrap=True),
-        mo.hstack([s_pos6, s_pos7, s_pos8, s_pos9], justify="start", gap=1, wrap=True),
+        mo.hstack([s_pos6, s_pos7, s_pos8, s_pos9, s_pos10], justify="start", gap=1, wrap=True),
         _body,
         _grundriss_head,
     ])
