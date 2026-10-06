@@ -94,6 +94,8 @@ def _():
     #  wählbar – die Stufen werden in der gewählten Folge auf den Stoffstrom
     #  angewandt. Reihenfolge und Auswahl wirken direkt auf Ausbeute, Reinheit
     #  und Wirtschaftlichkeit (keine starr vorgegebene Musterlösung).
+    #  Jedes Aggregat hat eine Nennkapazität: Überbelegung senkt Ausbeute und
+    #  Reinheit. Personal wird je Schicht gerechnet.
     # =========================================================================
     S_MATS = ["PET", "PE", "PP", "Folie", "FKN", "Fe", "Al", "PPK", "Rest"]
     S_PRESETS = {
@@ -103,27 +105,60 @@ def _():
     }
     # Preise Sekundärrohstoffe (€/t) und Ziel-Material je Produkt.
     # Folie ist KEIN Produkt (Störstoff) → kein Preis, kein Ziel-Eintrag.
-    S_PREIS = dict(PET=260, PE=190, PP=190, FKN=120, Fe=140, Al=950, PPK=85)
+    S_MARKT = {
+        "gut":     dict(PET=260, PE=190, PP=190, FKN=120, Fe=140, Al=950, PPK=85),
+        "mittel":  dict(PET=180, PE=110, PP=110, FKN=40,  Fe=100, Al=700, PPK=40),
+        "schwach": dict(PET=100, PE=30,  PP=30,  FKN=0,   Fe=60,  Al=500, PPK=0),
+    }
+    S_PREIS = S_MARKT["gut"]
     S_ZIEL = {"Fe-Metalle": "Fe", "Al / NE-Metalle": "Al", "PPK (Papier/Karton)": "PPK",
               "Getränkekartons (FKN)": "FKN", "PET": "PET", "PE": "PE", "PP": "PP"}
     # Aggregate-Metadaten. base=Standardlinie, opt=Optimierungsstufe.
     # fb = Fließbild-Label (| = Zeilenumbruch)
+    # cap = Nennkapazität des Aggregats bezogen auf seinen Zulaufstrom [t/h]; ausgelegt auf den
+    #       Planungspunkt 5 t/h (Standardlinie ≈ 75 % Last) → Mehrdurchsatz führt in die Überlast
+    #       (Bandbelegung = Zulauf / cap; Handsortierung: Kapazität ergibt sich aus der Besetzung)
     S_STAGES = {
-        "sieb":   dict(label="Siebanlage",            fb="Siebanlage",              sub="Klassierung",     col="#fdcb6e", invest=200000, kw=15, foot=(8, 3), rolle="base"),
-        "folie":  dict(label="Folienabscheider",      fb="Folien-|abscheider",      sub="Folie raus",      col="#00cec9", invest=180000, kw=15, foot=(4, 3), rolle="opt"),
-        "wind":   dict(label="Windsichter",           fb="Windsichter",             sub="Papier/Leicht",   col="#00b894", invest=120000, kw=25, foot=(4, 3), rolle="base"),
-        "magnet": dict(label="Magnetabscheider",      fb="Magnetab-|scheider",      sub="Fe",              col="#e17055", invest=60000,  kw=8,  foot=(2, 2), rolle="base"),
-        "eddy":   dict(label="Wirbelstromabscheider", fb="Wirbelstrom-|abscheider", sub="Al / NE",         col="#e84393", invest=150000, kw=20, foot=(3, 2), rolle="base"),
-        "nirfkn": dict(label="NIR-FKN (Kartons)",     fb="NIR-FKN",                 sub="Getränkekartons", col="#e0a458", invest=350000, kw=20, foot=(5, 3), rolle="opt"),
-        "nir":    dict(label="NIR-Sortierung",        fb="NIR-|Sortierung",         sub="PET · PE · PP",   col="#a29bfe", invest=600000, kw=30, foot=(6, 3), rolle="base"),
-        "nir2":   dict(label="NIR-Nachsortierung",    fb="NIR-Nach-|sortierung",    sub="Ausbeute ↑",      col="#6c8cff", invest=500000, kw=25, foot=(6, 3), rolle="opt"),
+        "hand":   dict(label="Handsortierung",        fb="Hand-|sortierung",        sub="Störstoffe",      col="#fab1a0", invest=250000, kw=15, foot=(8, 3), cap=None, rolle="opt"),
+        "sieb":   dict(label="Siebanlage",            fb="Siebanlage",              sub="Klassierung",     col="#fdcb6e", invest=700000, kw=45, foot=(8, 3), cap=6.7, rolle="base"),
+        "ballistik": dict(label="Ballistikseparator", fb="Ballistik-|separator",    sub="2D / 3D",         col="#00cec9", invest=500000, kw=40, foot=(6, 3), cap=4.0, rolle="opt"),
+        "wind":   dict(label="Windsichter",           fb="Windsichter",             sub="Papier/Leicht",   col="#00b894", invest=450000, kw=90, foot=(4, 3), cap=5.6, rolle="base"),
+        "magnet": dict(label="Magnetabscheider",      fb="Magnetab-|scheider",      sub="Fe",              col="#e17055", invest=150000, kw=15,  foot=(2, 2), cap=4.1, rolle="base"),
+        "eddy":   dict(label="Wirbelstromabscheider", fb="Wirbelstrom-|abscheider", sub="Al / NE",         col="#e84393", invest=450000, kw=30, foot=(3, 2), cap=3.6, rolle="base"),
+        "nirfkn": dict(label="NIR-FKN (Kartons)",     fb="NIR-FKN",                 sub="Getränkekartons", col="#e0a458", invest=800000, kw=70, foot=(5, 3), cap=3.6, rolle="opt"),
+        "nir":    dict(label="NIR-Sortierung",        fb="NIR-|Sortierung",         sub="PET · PE · PP",   col="#a29bfe", invest=1500000, kw=110, foot=(6, 3), cap=3.4, rolle="base"),
+        "nir2":   dict(label="NIR-Nachsortierung",    fb="NIR-Nach-|sortierung",    sub="Ausbeute ↑ · PPK",      col="#6c8cff", invest=1200000, kw=80, foot=(6, 3), cap=1.5, rolle="opt"),
     }
-    S_ORDER = ["sieb", "folie", "wind", "magnet", "eddy", "nirfkn", "nir", "nir2"]
+    # Grundausstattung: Sackaufreißer, Aufgabebunker/Dosierung, Fördertechnik, Ballenpresse, Steuerung/E-Technik,
+    # Montage und Inbetriebnahme
+    S_GRUND_INVEST = 1800000
+    S_GRUND_KW = 120
+    S_ORDER = ["hand", "sieb", "ballistik", "wind", "magnet", "eddy", "nirfkn", "nir", "nir2"]
+
+    # Bandbelegung: bis 85 % Nennlast volle Trennleistung, darüber sinkt die Ausbeute
+    # und Fehlausträge (Mitreißen von Fremdmaterial) nehmen zu.
+    S_LAST_OK = 0.85
+
+
+    def s_lastfaktor(belegung):
+        ueber = max(0.0, belegung - S_LAST_OK)
+        f_rec = max(0.25, 1.0 - 0.9 * ueber)
+        f_fehl = min(1.6, 1.0 + 1.2 * ueber)
+        return f_rec, f_fehl
+
 
     def sortiermodell(durchsatz, comp, sequence, betriebsstd,
-                      strompreis=0.20, personal_fte=3, lohn_fte=60000, overhead_a=120000):
-        ENTSORG = dict(sortierrest=-55.0, siebrest=-70.0, folien=0.0)   # Folie: kostenneutrale Verwertung
+                      sortierentgelt=0.0, hand_n=4,
+                      strompreis=0.20, lohn_fte=60000, lohn_hand=48000,
+                      grundbesatz=2, ausfallfaktor=1.2, verwaltung_a=200000,
+                      wartung_quote=0.06, versicherung_quote=0.015, markt="gut",
+                      pick_t_h=0.15):
+        # Entsorgungskosten Reststoffe (€/t, negativ = Kosten)
+        # (inkl. CO₂-Zuschlag nach BEHG bei der thermischen Verwertung)
+        ENTSORG = dict(sortierrest=-100.0, siebrest=-110.0, folien=-30.0)
+        PREIS = S_MARKT.get(markt, S_MARKT["gut"])
         MATS = S_MATS
+        schichten = max(1, round(betriebsstd / 2000))
 
         seq, seen = [], set()
         for k in sequence:
@@ -134,12 +169,16 @@ def _():
         s = sum(comp.values()) or 1.0
         main = {m: durchsatz * comp[m] / s for m in MATS}
         produkte, reste = {}, {}
-        stage_out = []   # je angewandter Stufe: (key, [(name, masse, reinheit|None, kind), ...])
+        stage_out = []   # je Stufe: (key, [(name, masse, reinheit|None, kind), ...], belegung|None)
+        # Zustand der Linie: klassiert = Siebung erfolgt (enges Korngrößenband für die
+        # nachfolgenden Trenner); nur3d = Ballistik hat die Flachteile (2D) abgezogen
+        zustand = dict(klassiert=False, nur3d=False)
+        S_KLASSIERT_NOETIG = ("wind", "ballistik", "eddy", "nirfkn", "nir", "nir2")
 
         def pull(eta):
             prod = {}
             for m in MATS:
-                moved = main[m] * eta.get(m, 0.0)
+                moved = main[m] * min(1.0, eta.get(m, 0.0))
                 prod[m] = moved
                 main[m] -= moved
             return prod
@@ -157,53 +196,130 @@ def _():
             reinheit = None if kind == "rest" else ((prod[S_ZIEL[name]] / masse) if masse > 1e-9 else 0.0)
             return (name, masse, reinheit, kind)
 
+        def scaled(eta, target, f_rec, f_fehl):
+            # Ziel-Ausbeute × Lastfaktor, Fehlausträge × Überlastfaktor
+            return {m: (v * f_rec if m in target else v * f_fehl) for m, v in eta.items()}
+
+        def nir_stufe(rec_max, cc, f_rec, f_fehl):
+            # NIR-Erkennung leidet unter Fremdstoffen (Überdeckung, Fehlschüsse) –
+            # gilt für Haupt- UND Nachsortierung. Die Nachsortierung ist kleiner
+            # ausgelegt und nur sinnvoll, wenn sie einen vorsortierten Teilstrom erhält.
+            gesamt = sum(main.values()) + 1e-9
+            dirt = sum(main[m] for m in MATS if m not in ("PET", "PE", "PP")) / gesamt
+            # Nach Ballistik liegen nur noch 3D-Teile auf dem Band: weniger Überdeckung
+            # durch Flachteile, weniger Fehlschüsse
+            k_dirt = 0.3 if zustand["nur3d"] else 0.6
+            if zustand["nur3d"]:
+                cc = {m: (v * 0.5 if m in ("Folie", "PPK", "Rest") else v) for m, v in cc.items()}
+            rec = rec_max * (1 - k_dirt * dirt) * f_rec
+            o = []
+            for poly in ["PET", "PE", "PP"]:
+                o.append(emit(poly, pull({m: (rec if m == poly else cc[m] * f_fehl) for m in MATS}), "prod"))
+            return o
+
         def apply_stage(key):
             o = []
-            if key == "sieb":
-                o.append(emit("Siebrest (Feinfraktion)", pull({m: (0.55 if m == "Rest" else 0.03) for m in MATS}), "rest"))
-            elif key == "folie":
-                # Dedizierte Folienabscheidung (Folienabsaugung / NIR-Folie): zieht Folie früh raus,
-                # bevor sie Papier (Windsichter) und Kunststoffe (NIR) verschmutzt.
-                eta = {m: {"Folie": 0.90, "PPK": 0.02, "Rest": 0.02}.get(m, 0.005) for m in MATS}
-                o.append(emit("Folien (→ Verwertung)", pull(eta), "rest"))
+            zulauf = sum(main.values())
+            cap = S_STAGES[key]["cap"]
+            bel = (zulauf / cap) if cap else None
+            f_rec, f_fehl = s_lastfaktor(bel) if bel is not None else (1.0, 1.0)
+            if key in S_KLASSIERT_NOETIG and not zustand["klassiert"]:
+                # ohne vorgeschaltete Siebung: breites Korngrößenspektrum, Großteile
+                # verdecken Kleinteile → schlechtere Trennschärfe
+                f_rec *= 0.85
+                f_fehl *= 1.3
+
+            if key == "hand":
+                # Handsortierkabine. Vor der ersten Produktausschleusung = Vorsortierung
+                # (Großteile/Störstoffe aus dem Hauptstrom), danach = Qualitätskontrolle
+                # (Negativsortierung der bereits erzeugten Produktfraktionen).
+                kap = hand_n * pick_t_h                       # entnehmbare Störstoffe [t/h]
+                if not produkte:
+                    rest_im_strom = main["Rest"]
+                    eta_r = min(0.6, kap / max(1e-9, rest_im_strom))
+                    bel = rest_im_strom / max(1e-9, kap) if kap > 0 else None
+                    o.append(emit("Sortierrest (→ EBS/MVA)", pull({"Rest": eta_r}), "rest"))
+                else:
+                    stoer = {}
+                    for name, prod in produkte.items():
+                        ziel = S_ZIEL[name]
+                        stoer[name] = sum(v for m, v in prod.items() if m != ziel)
+                    stoer_ges = sum(stoer.values())
+                    eta = min(0.8, kap / max(1e-9, stoer_ges))   # max. 80 % Klaubeleistung
+                    bel = stoer_ges / max(1e-9, kap) if kap > 0 else None
+                    raus = {m: 0.0 for m in MATS}
+                    for name, prod in produkte.items():
+                        ziel = S_ZIEL[name]
+                        for m in MATS:
+                            if m == ziel:
+                                d = prod[m] * 0.01 * (1 if kap > 0 else 0)   # Fehlgriffe
+                            else:
+                                d = prod[m] * eta
+                            prod[m] -= d
+                            raus[m] += d
+                    merge(reste, "Sortierrest (→ EBS/MVA)", raus)
+                    o.append(("Störstoffe (→ Sortierrest)", sum(raus.values()), None, "rest"))
+            elif key == "sieb":
+                eta = {m: (0.55 if m == "Rest" else 0.03) for m in MATS}
+                o.append(emit("Siebrest (Feinfraktion)", pull(scaled(eta, ("Rest",), f_rec, f_fehl)), "rest"))
+                zustand["klassiert"] = True
+            elif key == "ballistik":
+                # Ballistikseparator: Flachteile (2D: Folien, flache Papiere) wandern nach oben,
+                # körperförmige Teile (3D: Flaschen, Dosen, Kartons) rollen ab. Die 2D-Fraktion geht
+                # in die Folienverwertung, der 3D-Strom läuft weiter zur NIR.
+                eta = {m: {"Folie": 0.80, "PPK": 0.05, "Rest": 0.03}.get(m, 0.01) for m in MATS}
+                o.append(emit("Folien (→ Verwertung)", pull(scaled(eta, ("Folie",), f_rec, f_fehl)), "rest"))
+                zustand["nur3d"] = True
             elif key == "wind":
                 # Windsichtung: Leichtgut = Papier + Folie (+ leichter Rest). Air-Klassierung kann
                 # Folie nicht sauber vom Papier trennen → Rest-Folie verschmutzt die PPK-Fraktion.
                 eta = {m: {"PPK": 0.80, "Folie": 0.50, "Rest": 0.12}.get(m, 0.01) for m in MATS}
-                o.append(emit("PPK (Papier/Karton)", pull(eta), "prod"))
+                o.append(emit("PPK (Papier/Karton)", pull(scaled(eta, ("PPK",), f_rec, f_fehl)), "prod"))
             elif key == "magnet":
-                o.append(emit("Fe-Metalle", pull({m: (0.95 if m == "Fe" else 0.004) for m in MATS}), "prod"))
+                eta = {m: (0.95 if m == "Fe" else 0.004) for m in MATS}
+                o.append(emit("Fe-Metalle", pull(scaled(eta, ("Fe",), f_rec, f_fehl)), "prod"))
             elif key == "eddy":
                 gesamt = sum(main.values()) + 1e-9
                 penalty = min(0.45, (main["Fe"] / gesamt) * 2.5)   # Rest-Fe stört Wirbelstrom
                 eta = {m: (0.85 * (1 - penalty) if m == "Al" else (0.20 if m == "Fe" else 0.01)) for m in MATS}
-                o.append(emit("Al / NE-Metalle", pull(eta), "prod"))
+                o.append(emit("Al / NE-Metalle", pull(scaled(eta, ("Al",), f_rec, f_fehl)), "prod"))
             elif key == "nirfkn":
-                o.append(emit("Getränkekartons (FKN)", pull({m: (0.85 if m == "FKN" else 0.02) for m in MATS}), "prod"))
+                eta = {m: (0.85 if m == "FKN" else 0.02) for m in MATS}
+                o.append(emit("Getränkekartons (FKN)", pull(scaled(eta, ("FKN",), f_rec, f_fehl)), "prod"))
             elif key == "nir":
-                # Fremdstoffe (v. a. Folie) senken NIR-Ausbeute UND -Reinheit → Reihenfolge zählt
-                gesamt = sum(main.values()) + 1e-9
-                dirt = sum(main[m] for m in MATS if m not in ("PET", "PE", "PP")) / gesamt
-                rec = 0.92 * (1 - 0.6 * dirt)
                 cc = dict(PET=0.02, PE=0.02, PP=0.02, Folie=0.05, FKN=0.03, Fe=0.05, Al=0.05, PPK=0.04, Rest=0.04)
-                for poly in ["PET", "PE", "PP"]:
-                    o.append(emit(poly, pull({m: (rec if m == poly else cc[m]) for m in MATS}), "prod"))
+                o += nir_stufe(0.92, cc, f_rec, f_fehl)
             elif key == "nir2":
-                # Nachsortierung: gewinnt Rest-Polymer aus dem Strom (Ausbeute ↑)
-                for poly in ["PET", "PE", "PP"]:
-                    o.append(emit(poly, pull({m: (0.85 if m == poly else 0.015) for m in MATS}), "prod"))
-            return o
+                # Nachreinigung der PPK-Fraktion (positive NIR-Sortierung auf Papier): Fremdstoffe
+                # aus dem Windsichter-Leichtgut gehen zurück in den Hauptstrom
+                ppk = produkte.get("PPK (Papier/Karton)")
+                if ppk:
+                    for m in MATS:
+                        d = ppk[m] * (0.02 if m == "PPK" else 0.70 * f_rec)
+                        ppk[m] -= d
+                        main[m] += d
+                cc = {m: 0.015 for m in MATS}
+                o += nir_stufe(0.85, cc, f_rec, f_fehl)
+            return o, bel
 
         for k in seq:
-            stage_out.append((k, apply_stage(k)))
-        reste["Sortierrest (→ EBS/MVA)"] = dict(main)
+            _o, _bel = apply_stage(k)
+            stage_out.append((k, _o, _bel))
+        merge(reste, "Sortierrest (→ EBS/MVA)", dict(main))
+
+        # Erlöskurve: ab 95 % Reinheit voller Preis, 65–95 % linear, darunter Zuzahlung
+        # (Fraktion verfehlt die Spezifikation und muss wie Sortierrest entsorgt werden).
+        def eff_preis(basis, reinheit):
+            if reinheit >= 0.65:
+                return basis * min(1.0, (reinheit - 0.65) / 0.30)
+            return ENTSORG["sortierrest"] * min(1.0, (0.65 - reinheit) / 0.15)
 
         ergebnis, erloes_a = [], 0.0
         for name, prod in produkte.items():
             masse = sum(prod.values())
             reinheit = (prod[S_ZIEL[name]] / masse) if masse > 1e-9 else 0.0
-            basis = S_PREIS[S_ZIEL[name]]
-            eff = basis * max(0.0, min(1.0, (reinheit - 0.65) / 0.30))   # <65% wertlos, ab 95% voll
+            basis = PREIS[S_ZIEL[name]]
+            eff = eff_preis(basis, reinheit)
             m_a = masse * betriebsstd
             erl = m_a * eff
             erloes_a += erl
@@ -219,13 +335,21 @@ def _():
             ergebnis.append(dict(name=name, masse=masse, m_a=m_a, reinheit=None,
                                  basis=ENTSORG[key], eff_preis=ENTSORG[key], erloes=kost, kind="rest"))
 
-        inv = 400000 + sum(S_STAGES[k]["invest"] for k in seq)
-        kw = 20 + sum(S_STAGES[k]["kw"] for k in seq)
+        t_a = durchsatz * betriebsstd
+        entgelt_a = t_a * sortierentgelt
+        inv = S_GRUND_INVEST + sum(S_STAGES[k]["invest"] for k in seq)
+        kw = S_GRUND_KW + sum(S_STAGES[k]["kw"] for k in seq)
         energie_a = kw * betriebsstd * strompreis
-        personal_a = personal_fte * lohn_fte
-        wartung_a = inv * 0.04
-        betrieb_a = energie_a + personal_a + wartung_a + overhead_a
-        deckung_a = erloes_a + entsorg_a - betrieb_a
+        # Personal je Schicht: Grundbesatz (Anlagenfahrer, Radlader/Presse) + Handsortierer,
+        # hochgerechnet auf alle Schichten inkl. Ausfall (Urlaub, Krankheit)
+        n_hand = hand_n if "hand" in seq else 0
+        fte_grund = grundbesatz * schichten * ausfallfaktor
+        fte_hand = n_hand * schichten * ausfallfaktor
+        personal_a = fte_grund * lohn_fte + fte_hand * lohn_hand
+        wartung_a = inv * wartung_quote
+        versicherung_a = inv * versicherung_quote
+        betrieb_a = energie_a + personal_a + wartung_a + versicherung_a + verwaltung_a
+        deckung_a = entgelt_a + erloes_a + entsorg_a - betrieb_a
         amort = inv / deckung_a if deckung_a > 0 else None
 
         foot = [("Aufgabe / Dosierung", (6, 4))]
@@ -235,10 +359,12 @@ def _():
         foot_sum = sum(L * B for _, (L, B) in foot)
 
         return dict(seq=seq, ergebnis=ergebnis, stage_out=stage_out, erloes_a=erloes_a,
-                    entsorg_a=entsorg_a, energie_a=energie_a, personal_a=personal_a,
-                    wartung_a=wartung_a, overhead_a=overhead_a, betrieb_a=betrieb_a,
+                    entsorg_a=entsorg_a, entgelt_a=entgelt_a, energie_a=energie_a,
+                    personal_a=personal_a, fte=fte_grund + fte_hand, schichten=schichten,
+                    wartung_a=wartung_a, versicherung_a=versicherung_a, verwaltung_a=verwaltung_a,
+                    betrieb_a=betrieb_a, sortierkosten_t=(betrieb_a - entsorg_a) / max(1e-9, t_a),
                     deckung_a=deckung_a, amort=amort, inv=inv, kw=kw,
-                    t_a=durchsatz * betriebsstd, foot=foot, foot_sum=foot_sum)
+                    t_a=t_a, foot=foot, foot_sum=foot_sum)
     return S_ORDER, S_PRESETS, S_STAGES, sortiermodell
 
 
@@ -254,6 +380,13 @@ def _(S_ORDER, S_PRESETS, S_STAGES, mo):
                                         "Zweischicht (4000 h/a)": 4000,
                                         "Dreischicht (6000 h/a)": 6000},
                                value="Zweischicht (4000 h/a)", label="Betriebszeit")
+    s_entgelt = mo.ui.slider(start=0, stop=150, step=5, value=70,
+                             label="Sortierentgelt [€/t Input]", show_value=True)
+    s_markt = mo.ui.dropdown(options={"Marktlage gut": "gut", "Marktlage mittel": "mittel",
+                                      "Marktlage schwach": "schwach"},
+                             value="Marktlage gut", label="Sekundärrohstoffmarkt")
+    s_hand = mo.ui.slider(start=0, stop=8, step=1, value=2,
+                          label="Handsortierer je Schicht", show_value=True)
     _leer = "— (leer)"
     _opts = [_leer] + [S_STAGES[k]["label"] for k in S_ORDER]
     # Standard-Belegung = funktionierende 5er-Grundlinie (Optimierung über freie Positionen)
@@ -266,15 +399,15 @@ def _(S_ORDER, S_PRESETS, S_STAGES, mo):
     s_pos7 = mo.ui.dropdown(options=_opts, value=_leer, label="Position 7")
     s_pos8 = mo.ui.dropdown(options=_opts, value=_leer, label="Position 8")
     s_pos9 = mo.ui.dropdown(options=_opts, value=_leer, label="Position 9")
-    return (s_durchsatz, s_pos1, s_pos2, s_pos3, s_pos4, s_pos5, s_pos6,
-            s_pos7, s_pos8, s_pos9, s_preset, s_stunden)
+    return (s_durchsatz, s_entgelt, s_hand, s_markt, s_pos1, s_pos2, s_pos3, s_pos4,
+            s_pos5, s_pos6, s_pos7, s_pos8, s_pos9, s_preset, s_stunden)
 
 
 @app.cell
 def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
-      muell_t, niederschlag, s_durchsatz, s_pos1, s_pos2, s_pos3, s_pos4,
-      s_pos5, s_pos6, s_pos7, s_pos8, s_pos9, s_preset, s_stunden, sortier_t,
-      sortiermodell):
+      muell_t, niederschlag, s_durchsatz, s_entgelt, s_hand, s_markt, s_pos1, s_pos2,
+      s_pos3, s_pos4, s_pos5, s_pos6, s_pos7, s_pos8, s_pos9, s_preset,
+      s_stunden, sortier_t, sortiermodell):
     # =========================================================================
     #  AEZ-LEITSTAND – Aufbau
     #  -----------------------------------------------------------------------
@@ -595,16 +728,18 @@ def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
         _kk = _lab2key.get(_d.value)
         if _kk:
             _sequence.append(_kk)
-    _sr = sortiermodell(s_durchsatz.value, _scomp, _sequence, s_stunden.value)
+    _sr = sortiermodell(s_durchsatz.value, _scomp, _sequence, s_stunden.value,
+                        sortierentgelt=s_entgelt.value, hand_n=s_hand.value,
+                        markt=s_markt.value)
     _seq = _sr["seq"]
 
     def _fliessbild():
         # Spalten: Aufgabe + je angewandter Stufe (mit ihren Ausschleusungen) + Sortierrest
-        _stufen = [(None, "Wertstofftonne", f"{s_durchsatz.value:.1f} t/h", "#74b9ff", [])]
-        for _k, _outs in _sr["stage_out"]:
+        _stufen = [(None, "Wertstofftonne", f"{s_durchsatz.value:.1f} t/h", "#74b9ff", [], None)]
+        for _k, _outs, _bel in _sr["stage_out"]:
             _st = S_STAGES[_k]
-            _stufen.append((_k, _st["fb"], _st["sub"], _st["col"], _outs))
-        _stufen.append((None, "Sortierrest", "→ EBS/MVA", "#b2bec3", []))
+            _stufen.append((_k, _st["fb"], _st["sub"], _st["col"], _outs, _bel))
+        _stufen.append((None, "Sortierrest", "→ EBS/MVA", "#b2bec3", [], None))
         _W, _GAP = 128, 34
         _n = len(_stufen)
         _wid = 20 + _n * (_W + _GAP)
@@ -616,7 +751,7 @@ def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
                  '</defs>')
         _yt = 34
         _cols = []
-        for _i, (_k, _lab, _sub, _col, _outs) in enumerate(_stufen):
+        for _i, (_k, _lab, _sub, _col, _outs, _bel) in enumerate(_stufen):
             _x = 20 + _i * (_W + _GAP)
             _cx = _x + _W / 2
             _cols.append((_cx, _outs))
@@ -625,6 +760,9 @@ def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
             for _j, _ln in enumerate(_ls):
                 p.append(f'<text x="{_cx}" y="{_yt+19+_j*13}" fill="{_col}" text-anchor="middle" font-size="11" font-family="monospace" font-weight="bold">{_ln}</text>')
             p.append(f'<text x="{_cx}" y="{_yt+52}" fill="#9fb3c8" text-anchor="middle" font-size="8.5" font-family="monospace">{_sub}</text>')
+            if _bel is not None:
+                _bc = "#e17055" if _bel > 1.0 else ("#fdcb6e" if _bel > 0.85 else "#9fb3c8")
+                p.append(f'<text x="{_cx}" y="{_yt-10}" fill="{_bc}" text-anchor="middle" font-size="9" font-family="monospace" font-weight="bold">Last {_bel*100:.0f}&#8201;%</text>')
             if _i < _n - 1:
                 _xn = 20 + (_i + 1) * (_W + _GAP)
                 p.append(f'<line x1="{_x+_W}" y1="{_yt+29}" x2="{_xn}" y2="{_yt+29}" stroke="#5b9bd5" stroke-width="2.4" stroke-linecap="round" marker-end="url(#fb_a)"/>')
@@ -674,7 +812,7 @@ def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
     for _e in _sr["ergebnis"]:
         _isp = _e["reinheit"] is not None
         _rh = f"{_e['reinheit']*100:.0f} %" if _isp else "—"
-        _rhc = "#00b894" if (_isp and _e["reinheit"] >= 0.85) else ("#fdcb6e" if (_isp and _e["reinheit"] >= 0.6) else ("#e17055" if _isp else "#8497ab"))
+        _rhc = "#00b894" if (_isp and _e["reinheit"] >= 0.85) else ("#fdcb6e" if (_isp and _e["reinheit"] >= 0.65) else ("#e17055" if _isp else "#8497ab"))
         _erl = _e["erloes"]
         _erlc = "#00b894" if _erl > 0 else "#e17055"
         _namecol = "#dfe6e9" if _isp else "#9fb3c8"
@@ -700,30 +838,37 @@ def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
     _amort = f"{_sr['amort']:.1f} a" if _sr["amort"] else "kein Gewinn"
     _amc = "c-ok" if (_sr["amort"] and _sr["amort"] < 5) else ("c-w" if _sr["amort"] else "c-d")
     _deckc = "c-ok" if _sr["deckung_a"] > 0 else "c-d"
+    _fte_txt = f"{_sr['fte']:.1f}".replace(".", ",")
 
     _body = mo.Html(f'''<div class="pls">
       <div class="pls-c" style="overflow-x:auto"><h3>Verfahrensfließbild (aktive Konfiguration)</h3>
         {_fliessbild()}
-        <p style="color:#8497ab;font-size:0.8em;margin-top:6px">Grüne Ausschleusungen = verkaufsfähige Wertstofffraktionen · graue = Reststoffe. Reinheit &lt; 50 % ⇒ nicht vermarktbar.</p>
+        <p style="color:#8497ab;font-size:0.8em;margin-top:6px">Grüne Ausschleusungen = verkaufsfähige Wertstofffraktionen · graue = Reststoffe · Last = Bandbelegung bezogen auf die Nennkapazität des Aggregats. Reinheit &lt; 65 % ⇒ Fraktion außer Spezifikation, Zuzahlung bei der Entsorgung.</p>
       </div>
       <div class="pls-g2">
         <div class="pls-c"><h3>⚖️ Massen- &amp; Erlösbilanz</h3>{_bilanz}
-          <p style="color:#8497ab;font-size:0.78em;margin-top:6px">€/t = effektiver Erlös nach Reinheitsabschlag (Reststoffe: Entsorgungskosten). k€/a bei {s_stunden.value:,} h/a.</p>
+          <p style="color:#8497ab;font-size:0.78em;margin-top:6px">€/t = effektiver Erlös nach Reinheitsabschlag (negativ = Zuzahlung bzw. Entsorgungskosten). k€/a bei {s_stunden.value:,} h/a.</p>
         </div>
         <div class="pls-c"><h3>💶 Wirtschaftlichkeit (Richtwerte)</h3>
           {vtbl(
               vr("Durchsatz", f"{_sr['t_a']:,.0f}", "t/a")
               + vr("Investition", f"{_sr['inv']/1000:,.0f}", "k€")
-              + vr("Erlöse Wertstoffe", f"{_sr['erloes_a']/1000:,.0f}", "k€/a", "c-ok")
+              + vr("Sortierentgelt", f"{_sr['entgelt_a']/1000:,.0f}", "k€/a", "c-ok")
+              + vr("Erlöse Wertstoffe", f"{_sr['erloes_a']/1000:,.0f}", "k€/a", "c-ok" if _sr['erloes_a'] >= 0 else "c-d")
               + vr("Entsorgung Reste", f"{_sr['entsorg_a']/1000:,.0f}", "k€/a", "c-d")
-              + vr("Betriebskosten", f"{_sr['betrieb_a']/1000:,.0f}", "k€/a", "c-w")
+              + vr("Personal", f"{_sr['personal_a']/1000:,.0f}", f"k€/a ({_fte_txt} VZ)", "c-w")
+              + vr("Energie", f"{_sr['energie_a']/1000:,.0f}", f"k€/a ({_sr['kw']:.0f} kW)", "c-w")
+              + vr("Wartung + Versicherung", f"{(_sr['wartung_a'] + _sr['versicherung_a'])/1000:,.0f}", "k€/a", "c-w")
+              + vr("Verwaltung + Sonstiges", f"{_sr['verwaltung_a']/1000:,.0f}", "k€/a", "c-w")
+              + vr("Betriebskosten gesamt", f"{_sr['betrieb_a']/1000:,.0f}", "k€/a", "c-w")
           )}
           <div class="pls-sep"></div>
           {vtbl(
-              vr("Deckungsbeitrag", f"{_sr['deckung_a']/1000:,.0f}", "k€/a", _deckc)
+              vr("Sortierkosten je t Input", f"{_sr['sortierkosten_t']:,.0f}", "€/t")
+              + vr("Deckungsbeitrag", f"{_sr['deckung_a']/1000:,.0f}", "k€/a", _deckc)
               + vr("Amortisation", _amort, "", _amc)
           )}
-          <p style="color:#8497ab;font-size:0.78em;margin-top:6px">Betriebskosten = Energie ({_sr['kw']:.0f} kW) + Personal (3 VZ) + Wartung (4 % Invest) + Overhead. Ohne Finanzierung, Transport, Annahmeentgelte, Preisschwankungen.</p>
+          <p style="color:#8497ab;font-size:0.78em;margin-top:6px">Personal: {_sr['schichten']} Schicht(en), Grundbesatz + Handsortierung inkl. 20 % Ausfallreserve · Wartung 6 % und Versicherung 1,5 % der Investition · Sortierkosten = (Betrieb + Entsorgung) ÷ Input · Amortisation statisch (Investition ÷ Deckungsbeitrag), ohne Finanzierung und Transport.</p>
         </div>
       </div>
     </div>''')
@@ -754,6 +899,7 @@ def _(GRUNDRISS_URL, MVA_URL, S_PRESETS, S_STAGES, bio_t, heizwert, ks_t, mo,
     sortierung = mo.vstack([
         _ctx,
         mo.hstack([s_preset, s_durchsatz, s_stunden], justify="start", gap=1, wrap=True),
+        mo.hstack([s_entgelt, s_markt, s_hand], justify="start", gap=1, wrap=True),
         _seqhead,
         mo.hstack([s_pos1, s_pos2, s_pos3, s_pos4, s_pos5], justify="start", gap=1, wrap=True),
         mo.hstack([s_pos6, s_pos7, s_pos8, s_pos9], justify="start", gap=1, wrap=True),
